@@ -2,6 +2,8 @@ package org.apache.zookeeper;
 
 import org.apache.zookeeper.data.ACL;
 
+import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
 
 /**
@@ -51,6 +53,35 @@ class Op {
         public int getFlags() {
             return flags;
         }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof Create)) return false;
+
+            Create op = (Create) o;
+
+            boolean aclEquals = true;
+            Iterator<ACL> i = op.getAcl().iterator();
+            for (ACL acl : getAcl()) {
+                boolean hasMoreData = i.hasNext();
+                if (!hasMoreData) {
+                    aclEquals = false;
+                    break;
+                }
+                ACL otherAcl = i.next();
+                if (!acl.equals(otherAcl)) {
+                    aclEquals = false;
+                    break;
+                }
+            }
+            return !i.hasNext() && getType() == op.getType() && Arrays.equals(data, op.data) && flags == op.flags && aclEquals;
+        }
+
+        @Override
+        public int hashCode() {
+            return super.getType() + path.hashCode() + data.hashCode();
+        }
     }
 
     public static class Delete extends Op {
@@ -69,6 +100,21 @@ class Op {
 
         public int getVersion() {
             return version;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof Delete)) return false;
+
+            Delete op = (Delete) o;
+
+            return getType() == op.getType() && version == op.version && path.equals(op.path);
+        }
+
+        @Override
+        public int hashCode() {
+            return super.getType() + path.hashCode() + version;
         }
     }
 
@@ -95,6 +141,21 @@ class Op {
         public int getVersion() {
             return version;
         }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof Update)) return false;
+
+            Update op = (Update) o;
+
+            return getType() == op.getType() && version == op.version && path.equals(op.path) && Arrays.equals(data, op.data);
+        }
+
+        @Override
+        public int hashCode() {
+            return super.getType() + path.hashCode() + data.hashCode() + version;
+        }
     }
 
     public static class Check extends Op {
@@ -113,6 +174,21 @@ class Op {
 
         public int getVersion() {
             return version;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof Check)) return false;
+
+            Check op = (Check) o;
+
+            return getType() == op.getType() && path.equals(op.path) && version == op.version;
+        }
+
+        @Override
+        public int hashCode() {
+            return super.getType() + path.hashCode() + version;
         }
     }
 }
