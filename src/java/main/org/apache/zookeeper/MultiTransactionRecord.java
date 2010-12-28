@@ -25,7 +25,11 @@ public class MultiTransactionRecord implements Record {
 
     @Override
     public int hashCode() {
-        return ops != null ? ops.hashCode() : 0;
+        int h = 1023;
+        for (Op op : ops) {
+            h = h * 25 + op.hashCode();
+        }
+        return h;
     }
 
     public MultiTransactionRecord(Iterable<Op> ops) {
