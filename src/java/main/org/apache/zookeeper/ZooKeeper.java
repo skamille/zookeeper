@@ -749,6 +749,17 @@ public class ZooKeeper {
         }
     }
 
+    public void multi(Iterable<Op> ops) throws InterruptedException, KeeperException {
+        RequestHeader h = new RequestHeader();
+        h.setType(ZooDefs.OpCode.multi);
+        MultiTransactionRecord request = new MultiTransactionRecord(ops);
+
+        ReplyHeader r = cnxn.submitRequest(h, request, null, null);
+        if (r.getErr() != 0) {
+            throw KeeperException.create(KeeperException.Code.get(r.getErr()));
+        }
+    }
+
     
     /**
      * Recursively delete the node with the given path. 
