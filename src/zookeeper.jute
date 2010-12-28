@@ -95,6 +95,9 @@ module org.apache.zookeeper.proto {
         int xid;
         int type;
     }
+    class MultiHeader {
+        int type;
+    }
     class AuthPacket {
         int type;
         ustring scheme;
@@ -134,6 +137,10 @@ module org.apache.zookeeper.proto {
     class GetChildren2Request {
         ustring path;
         boolean watch;
+    }
+    class CheckVersionRequest {
+        ustring path;
+        int version;
     }
     class GetMaxChildrenRequest {
         ustring path;
