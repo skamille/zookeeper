@@ -80,7 +80,7 @@ class Op {
 
         @Override
         public int hashCode() {
-            return super.getType() + path.hashCode() + data.hashCode();
+            return super.getType() + path.hashCode() + Arrays.hashCode(data);
         }
     }
 
@@ -154,7 +154,7 @@ class Op {
 
         @Override
         public int hashCode() {
-            return super.getType() + path.hashCode() + data.hashCode() + version;
+            return super.getType() + path.hashCode() + Arrays.hashCode(data) + version;
         }
     }
 
