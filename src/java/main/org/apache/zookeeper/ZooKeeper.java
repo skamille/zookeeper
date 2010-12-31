@@ -65,6 +65,8 @@ import org.apache.zookeeper.proto.SyncRequest;
 import org.apache.zookeeper.proto.SyncResponse;
 import org.apache.zookeeper.server.DataTree;
 
+import javax.sql.rowset.spi.TransactionalWriter;
+
 /**
  * This is the main class of ZooKeeper client library. To use a ZooKeeper
  * service, an application must first instantiate an object of ZooKeeper class.
@@ -749,18 +751,27 @@ public class ZooKeeper {
         }
     }
 
-    public void multi(Iterable<Op> ops) throws InterruptedException, KeeperException {
+    public List<OpResult> multi(Iterable<Op> ops) throws InterruptedException, KeeperException {
+        MultiTransactionRecord request = new MultiTransactionRecord(ops);
+        return multi_internal(request);
+    }
+
+    protected List<OpResult> multi_internal(MultiTransactionRecord request) throws InterruptedException, KeeperException {
         RequestHeader h = new RequestHeader();
         h.setType(ZooDefs.OpCode.multi);
-        MultiTransactionRecord request = new MultiTransactionRecord(ops);
-
-        ReplyHeader r = cnxn.submitRequest(h, request, null, null);
+        MultiResponse response = new MultiResponse();
+        ReplyHeader r = cnxn.submitRequest(h, request, response, null);
         if (r.getErr() != 0) {
             throw KeeperException.create(KeeperException.Code.get(r.getErr()));
         }
+
+        return response.getResultList();
     }
 
-    
+    public Transaction transaction() {
+        return new Transaction(this);
+    }
+
     /**
      * Recursively delete the node with the given path. 
      * <p>

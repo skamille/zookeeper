@@ -62,7 +62,7 @@ public class MultiTransactionRecord implements Record {
                     new DeleteRequest(delete.getPath(), delete.getVersion()).serialize(archive, tag);
                     break;
                 case ZooDefs.OpCode.setData:
-                    Op.Update update = (Op.Update) op;
+                    Op.SetData update = (Op.SetData) op;
                     new SetDataRequest(update.getPath(), update.getData(), update.getVersion()).serialize(archive, tag);
                     break;
                 default:
@@ -99,7 +99,7 @@ public class MultiTransactionRecord implements Record {
                 case ZooDefs.OpCode.setData:
                     SetDataRequest sdr = new SetDataRequest();
                     sdr.deserialize(archive, tag);
-                    add(new Op.Update(sdr.getPath(), sdr.getData(), sdr.getVersion()));
+                    add(new Op.SetData(sdr.getPath(), sdr.getData(), sdr.getVersion()));
                     break;
                 default:
                     throw new IOException("Invalid type of op");

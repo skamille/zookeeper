@@ -17,7 +17,7 @@ public class MultiTransactionRecordTest extends TestCase {
         request.add(new Op.Check("check", 1));
         request.add(new Op.Create("create", "create data".getBytes(), ZooDefs.Ids.CREATOR_ALL_ACL, ZooDefs.Perms.ALL));
         request.add(new Op.Delete("delete", 17));
-        request.add(new Op.Update("update", "update data".getBytes(), 19));
+        request.add(new Op.SetData("setData", "set data".getBytes(), 19));
 
         MultiTransactionRecord decodedRequest = codeDecode(request);
 

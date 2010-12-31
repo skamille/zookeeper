@@ -15,7 +15,7 @@ import java.util.List;
 class Op {
     private int type;
 
-    // prevent bare construction
+    // prevent untyped construction
     private Op(int type) {
         this.type = type;
     }
@@ -36,6 +36,14 @@ class Op {
             this.data = data;
             this.acl = acl;
             this.flags = flags;
+        }
+
+        public Create(String path, byte[] data, List<ACL> acl, CreateMode createMode) {
+            super(ZooDefs.OpCode.create);
+            this.path = path;
+            this.data = data;
+            this.acl = acl;
+            this.flags = createMode.toFlag();
         }
 
         public String getPath() {
@@ -118,12 +126,12 @@ class Op {
         }
     }
 
-    public static class Update extends Op {
+    public static class SetData extends Op {
         private String path;
         private byte[] data;
         private int version;
 
-        public Update(String path, byte[] data, int version) {
+        public SetData(String path, byte[] data, int version) {
             super(ZooDefs.OpCode.setData);
             this.path = path;
             this.data = data;
@@ -145,9 +153,9 @@ class Op {
         @Override
         public boolean equals(Object o) {
             if (this == o) return true;
-            if (!(o instanceof Update)) return false;
+            if (!(o instanceof SetData)) return false;
 
-            Update op = (Update) o;
+            SetData op = (SetData) o;
 
             return getType() == op.getType() && version == op.version && path.equals(op.path) && Arrays.equals(data, op.data);
         }
