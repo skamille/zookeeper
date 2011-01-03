@@ -9,6 +9,7 @@ import org.apache.zookeeper.proto.SetDataResponse;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 
 /**
@@ -19,7 +20,11 @@ import java.util.List;
  * with the corresponding operation in the original request list.
  */
 public class MultiResponse implements Record {
-    private List<OpResult> results;
+    private List<OpResult> results = new ArrayList<OpResult>();
+
+    public void add(OpResult x) {
+        results.add(x);
+    }
 
     @Override
     public void serialize(OutputArchive archive, String tag) throws IOException {
@@ -87,5 +92,37 @@ public class MultiResponse implements Record {
 
     public List<OpResult> getResultList() {
         return results;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof MultiResponse)) return false;
+
+        MultiResponse other = (MultiResponse) o;
+
+        if (results != null) {
+            Iterator<OpResult> i = other.results.iterator();
+            for (OpResult result : results) {
+                if (i.hasNext()) {
+                    if (!result.equals(i.next())) {
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
+            }
+            return !i.hasNext();
+        }
+        else return other.results == null;
+    }
+
+    @Override
+    public int hashCode() {
+        int hash = results.size();
+        for (OpResult result : results) {
+            hash = (hash * 35) + result.hashCode();
+        }
+        return hash;
     }
 }
