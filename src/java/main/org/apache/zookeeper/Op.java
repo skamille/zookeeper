@@ -12,12 +12,32 @@ import java.util.List;
  *
  * Sub-classes of Op each represent each detailed type.
  */
-class Op {
+public class Op {
     private int type;
 
     // prevent untyped construction
     private Op(int type) {
         this.type = type;
+    }
+
+    public static Op create(String path, byte[] data, List<ACL> acl, int flags) {
+        return new Create(path, data, acl, flags);
+    }
+
+    public static Op create(String path, byte[] data, List<ACL> acl, CreateMode createMode) {
+        return new Create(path, data, acl, createMode);
+    }
+
+    public static Op delete(String path, int version) {
+        return new Delete(path, version);
+    }
+
+    public static Op setData(String path, byte[] data, int version) {
+        return new SetData(path, data, version);
+    }
+
+    public static Op check(String path, int version) {
+        return new Check(path, version);
     }
 
     public int getType() {
@@ -30,7 +50,7 @@ class Op {
         private List<ACL> acl;
         private int flags;
 
-        public Create(String path, byte[] data, List<ACL> acl, int flags) {
+        private Create(String path, byte[] data, List<ACL> acl, int flags) {
             super(ZooDefs.OpCode.create);
             this.path = path;
             this.data = data;
@@ -38,7 +58,7 @@ class Op {
             this.flags = flags;
         }
 
-        public Create(String path, byte[] data, List<ACL> acl, CreateMode createMode) {
+        private Create(String path, byte[] data, List<ACL> acl, CreateMode createMode) {
             super(ZooDefs.OpCode.create);
             this.path = path;
             this.data = data;
@@ -96,7 +116,7 @@ class Op {
         private String path;
         private int version;
 
-        public Delete(String path, int version) {
+        private Delete(String path, int version) {
             super(ZooDefs.OpCode.delete);
             this.path = path;
             this.version = version;
@@ -131,7 +151,7 @@ class Op {
         private byte[] data;
         private int version;
 
-        public SetData(String path, byte[] data, int version) {
+        private SetData(String path, byte[] data, int version) {
             super(ZooDefs.OpCode.setData);
             this.path = path;
             this.data = data;
@@ -170,7 +190,7 @@ class Op {
         private String path;
         private int version;
 
-        public Check(String path, int version) {
+        private Check(String path, int version) {
             super(ZooDefs.OpCode.check);
             this.path = path;
             this.version = version;

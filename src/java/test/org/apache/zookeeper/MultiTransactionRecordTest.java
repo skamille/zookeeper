@@ -14,10 +14,10 @@ public class MultiTransactionRecordTest extends TestCase {
     @Test
     public void testRoundTrip() throws IOException {
         MultiTransactionRecord request = new MultiTransactionRecord();
-        request.add(new Op.Check("check", 1));
-        request.add(new Op.Create("create", "create data".getBytes(), ZooDefs.Ids.CREATOR_ALL_ACL, ZooDefs.Perms.ALL));
-        request.add(new Op.Delete("delete", 17));
-        request.add(new Op.SetData("setData", "set data".getBytes(), 19));
+        request.add(Op.check("check", 1));
+        request.add(Op.create("create", "create data".getBytes(), ZooDefs.Ids.CREATOR_ALL_ACL, ZooDefs.Perms.ALL));
+        request.add(Op.delete("delete", 17));
+        request.add(Op.setData("setData", "set data".getBytes(), 19));
 
         MultiTransactionRecord decodedRequest = codeDecode(request);
 

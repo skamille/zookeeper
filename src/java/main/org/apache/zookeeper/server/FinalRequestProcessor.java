@@ -26,6 +26,7 @@ import org.apache.jute.Record;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.zookeeper.KeeperException;
+import org.apache.zookeeper.MultiResponse;
 import org.apache.zookeeper.ZooDefs;
 import org.apache.zookeeper.KeeperException.Code;
 import org.apache.zookeeper.KeeperException.SessionMovedException;
@@ -180,6 +181,13 @@ public class FinalRequestProcessor implements RequestProcessor {
                 zks.finishSessionInit(request.cnxn, true);
                 return;
             }
+            case OpCode.multi: {
+                rsp = new MultiResponse();
+                err = Code.get(rc.err);
+                lastOp = "MULT";
+                return;
+            }
+
             case OpCode.create: {
                 lastOp = "CREA";
                 rsp = new CreateResponse(rc.path);

@@ -75,22 +75,22 @@ public class MultiTransactionRecord implements Record {
                 case ZooDefs.OpCode.check:
                     CheckVersionRequest cvr = new CheckVersionRequest();
                     cvr.deserialize(archive, tag);
-                    add(new Op.Check(cvr.getPath(), cvr.getVersion()));
+                    add(Op.check(cvr.getPath(), cvr.getVersion()));
                     break;
                 case ZooDefs.OpCode.create:
                     CreateRequest cr = new CreateRequest();
                     cr.deserialize(archive, tag);
-                    add(new Op.Create(cr.getPath(), cr.getData(), cr.getAcl(), cr.getFlags()));
+                    add(Op.create(cr.getPath(), cr.getData(), cr.getAcl(), cr.getFlags()));
                     break;
                 case ZooDefs.OpCode.delete:
                     DeleteRequest dr = new DeleteRequest();
                     dr.deserialize(archive, tag);
-                    add(new Op.Delete(dr.getPath(), dr.getVersion()));
+                    add(Op.delete(dr.getPath(), dr.getVersion()));
                     break;
                 case ZooDefs.OpCode.setData:
                     SetDataRequest sdr = new SetDataRequest();
                     sdr.deserialize(archive, tag);
-                    add(new Op.SetData(sdr.getPath(), sdr.getData(), sdr.getVersion()));
+                    add(Op.setData(sdr.getPath(), sdr.getData(), sdr.getVersion()));
                     break;
                 default:
                     throw new IOException("Invalid type of op");
