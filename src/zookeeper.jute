@@ -21,7 +21,7 @@ module org.apache.zookeeper.data {
         ustring scheme;
         ustring id;
     }
-   class ACL {
+    class ACL {
         int perms;
         Id id;
     }
@@ -255,5 +255,12 @@ module org.apache.zookeeper.txn {
     }
     class ErrorTxn {
         int err;
+    }
+    class Txn {
+        TxnHeader hdr;
+        buffer data;
+    }
+    class MultiTxn {
+        vector<org.apache.zookeeper.txn.Txn> txns;
     }
 }

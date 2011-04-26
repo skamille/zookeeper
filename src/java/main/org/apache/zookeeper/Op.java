@@ -1,5 +1,11 @@
 package org.apache.zookeeper;
 
+import org.apache.jute.Record;
+import org.apache.zookeeper.proto.CreateRequest;
+import org.apache.zookeeper.proto.DeleteRequest;
+import org.apache.zookeeper.proto.SetACLRequest;
+import org.apache.zookeeper.proto.SetDataRequest;
+import org.apache.zookeeper.proto.CheckVersionRequest;
 import org.apache.zookeeper.data.ACL;
 
 import java.util.Arrays;
@@ -12,7 +18,7 @@ import java.util.List;
  *
  * Sub-classes of Op each represent each detailed type.
  */
-public class Op {
+public abstract class Op {
     private int type;
 
     // prevent untyped construction
@@ -43,6 +49,8 @@ public class Op {
     public int getType() {
         return type;
     }
+
+    public abstract Record toRequestRecord() ;
 
     public static class Create extends Op {
         private String path;
@@ -110,6 +118,11 @@ public class Op {
         public int hashCode() {
             return super.getType() + path.hashCode() + Arrays.hashCode(data);
         }
+
+        @Override
+        public Record toRequestRecord() {
+            return new CreateRequest(path, data, acl, flags);
+        }
     }
 
     public static class Delete extends Op {
@@ -143,6 +156,11 @@ public class Op {
         @Override
         public int hashCode() {
             return super.getType() + path.hashCode() + version;
+        }
+
+        @Override
+        public Record toRequestRecord() {
+            return new DeleteRequest(path, version);
         }
     }
 
@@ -184,6 +202,11 @@ public class Op {
         public int hashCode() {
             return super.getType() + path.hashCode() + Arrays.hashCode(data) + version;
         }
+
+        @Override
+        public Record toRequestRecord() {
+            return new SetDataRequest(path, getData(), version);
+        }
     }
 
     public static class Check extends Op {
@@ -217,6 +240,11 @@ public class Op {
         @Override
         public int hashCode() {
             return super.getType() + path.hashCode() + version;
+        }
+
+        @Override
+        public Record toRequestRecord() {
+            return new CheckVersionRequest(path, version);
         }
     }
 }

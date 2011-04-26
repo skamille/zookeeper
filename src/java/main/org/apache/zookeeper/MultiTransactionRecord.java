@@ -17,7 +17,7 @@ import java.util.List;
  * the type of the following transaction or a negative number if no more transactions
  * are included.
  */
-public class MultiTransactionRecord implements Record {
+public class MultiTransactionRecord implements Record, Iterable<Op> {
     private List<Op> ops = new ArrayList<Op>();
 
     public MultiTransactionRecord() {
@@ -29,8 +29,17 @@ public class MultiTransactionRecord implements Record {
         }
     }
 
+    @Override
+    public Iterator<Op> iterator() {
+        return ops.iterator() ;
+    }
+
     public void add(Op op) {
         ops.add(op);
+    }
+
+    public int size() {
+        return ops.size();
     }
 
     @Override

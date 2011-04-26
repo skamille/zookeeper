@@ -55,6 +55,12 @@ import org.apache.zookeeper.server.ZooKeeperServer.ChangeRecord;
 import org.apache.zookeeper.txn.CreateSessionTxn;
 import org.apache.zookeeper.txn.ErrorTxn;
 
+import org.apache.zookeeper.OpResult;
+import org.apache.zookeeper.OpResult.CheckResult;
+import org.apache.zookeeper.OpResult.CreateResult;
+import org.apache.zookeeper.OpResult.DeleteResult;
+import org.apache.zookeeper.OpResult.SetDataResult;
+
 /**
  * This Request processor actually applies any transaction associated with a
  * request and services any queries. It is always at the end of a
@@ -182,12 +188,44 @@ public class FinalRequestProcessor implements RequestProcessor {
                 return;
             }
             case OpCode.multi: {
-                rsp = new MultiResponse();
-                err = Code.get(rc.err);
                 lastOp = "MULT";
-                return;
-            }
+                MultiResponse multiResponse = new MultiResponse() ;
+                rsp = multiResponse;
 
+                for (ProcessTxnResult subTxnResult : rc.multiResult) {
+
+                    OpResult subResult ;
+
+                    switch (subTxnResult.type) {
+                        case OpCode.check:
+                            subResult = new CheckResult(subTxnResult.stat);
+                            break;
+                        case OpCode.create:
+                            subResult = new CreateResult(subTxnResult.path);
+                            break;
+                        case OpCode.delete:
+                            subResult = new DeleteResult();
+                            break;
+                        case OpCode.setData:
+                            subResult = new SetDataResult(subTxnResult.stat);
+                            break;
+                        default:
+                            throw new IOException("Invalid type of op");
+                    }
+
+                    //Only set multi-op's error value to first op that failed
+                    //(otherwise it won't map 1-1 to a keeper exception as required).
+                    if (subTxnResult.err != 0) {
+                        if (err == Code.OK) {
+                            err = Code.get(subTxnResult.err);
+                        }
+                    }
+                    
+                    multiResponse.add(subResult);
+                }
+
+                break;
+            }
             case OpCode.create: {
                 lastOp = "CREA";
                 rsp = new CreateResponse(rc.path);

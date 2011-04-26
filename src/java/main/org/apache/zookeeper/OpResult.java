@@ -18,15 +18,15 @@ public class OpResult {
     }
 
     public static class CreateResult extends OpResult {
-        private String name;
+        private String path;
 
-        public CreateResult(String name) {
+        public CreateResult(String path) {
             super(ZooDefs.OpCode.create);
-            this.name = name;
+            this.path = path;
         }
 
-        public String getName() {
-            return name;
+        public String getPath() {
+            return path;
         }
 
         @Override
@@ -35,12 +35,12 @@ public class OpResult {
             if (!(o instanceof OpResult)) return false;
 
             CreateResult other = (CreateResult) o;
-            return getType() == other.getType() && name.equals(other.name);
+            return getType() == other.getType() && path.equals(other.path);
         }
 
         @Override
         public int hashCode() {
-            return getType() * 35 + name.hashCode();
+            return getType() * 35 + path.hashCode();
         }
     }
 

@@ -34,7 +34,7 @@ public class MultiResponse implements Record {
 
             switch (result.getType()) {
                 case ZooDefs.OpCode.create:
-                    new CreateResponse(((OpResult.CreateResult) result).getName()).serialize(archive, tag);
+                    new CreateResponse(((OpResult.CreateResult) result).getPath()).serialize(archive, tag);
                     break;
                 case ZooDefs.OpCode.delete:
                     break;

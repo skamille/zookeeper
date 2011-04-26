@@ -2,6 +2,7 @@ package org.apache.zookeeper.test;
 
 import org.apache.log4j.Logger;
 import org.apache.zookeeper.*;
+import org.apache.zookeeper.ZooDefs.Ids;
 import org.apache.zookeeper.server.ServerCnxnFactory;
 import org.apache.zookeeper.server.SyncRequestProcessor;
 import org.apache.zookeeper.server.ZooKeeperServer;
@@ -13,6 +14,10 @@ import org.junit.Test;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.List;
+import java.util.ArrayList;
+
+import org.apache.zookeeper.data.Stat;
 
 import static org.apache.zookeeper.test.ClientBase.CONNECTION_TIMEOUT;
 
@@ -24,8 +29,13 @@ public class MultiTransactionTest extends ZKTestCase implements Watcher {
     private ZooKeeper zk;
     private ServerCnxnFactory serverFactory;
 
+    @Override
+    public void process(WatchedEvent event) {
+        // ignore
+    }
+
     @Before
-    public void setupZk() throws IOException, InterruptedException, KeeperException {
+    public void setupZk() throws Exception {
         File tmpDir = ClientBase.createTmpDir();
         ClientBase.setupTestEnv();
         ZooKeeperServer zks = new ZooKeeperServer(tmpDir, tmpDir, 3000);
@@ -40,31 +50,130 @@ public class MultiTransactionTest extends ZKTestCase implements Watcher {
     }
 
     @After
-    public void shutdownServer() throws InterruptedException {
+    public void shutdownServer() throws Exception {
         zk.close();
         serverFactory.shutdown();
     }
 
     @Test
-    public void testListOfOps() throws InterruptedException, KeeperException {
+    public void testCreate() throws Exception {
+        zk.multi(Arrays.asList(
+                Op.create("/multi0", new byte[0], Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT),
+                Op.create("/multi1", new byte[0], Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT),
+                Op.create("/multi2", new byte[0], Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT)
+                ));
+        zk.getData("/multi0", false, null);
+        zk.getData("/multi1", false, null);
+        zk.getData("/multi2", false, null);
+    }
+    
+    @Test
+    public void testCreateDelete() throws Exception {
+
+        zk.multi(Arrays.asList(
+                Op.create("/multi", new byte[0], Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT),
+                Op.delete("/multi", 0)
+                ));
         try {
-            zk.multi(Arrays.asList(
-                    Op.create("/test/foo", new byte[]{1, 2, 3}, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT),
-                    Op.delete("/test/foo", 123)
-            ));
-            System.out.printf("after\n");
-        } catch (InterruptedException e) {
-            e.printStackTrace();  //To change body of catch statement use File | Settings | File Templates.
+            zk.getData("/multi", false, null);
+            Assert.fail("/multi should have been deleted");
         } catch (KeeperException e) {
-            e.printStackTrace();  //To change body of catch statement use File | Settings | File Templates.
-        } catch (Throwable x) {
-            x.printStackTrace();
+            /* Expected */
         }
-        System.out.printf("next\n");
     }
 
-    @Override
-    public void process(WatchedEvent event) {
-        // ignore
+    @Test
+    public void testInvalidVersion() throws Exception {
+
+        try {
+            zk.multi(Arrays.asList(
+                    Op.create("/multi", new byte[0], Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT),
+                    Op.delete("/multi", 1)
+            ));
+            Assert.fail("delete /multi should have failed");
+        } catch (KeeperException e) {
+            /* PASS */
+        }
+    }
+
+    @Test
+    public void testNestedCreate() throws Exception {
+
+        zk.multi(Arrays.asList(
+                /* Create */
+                Op.create("/multi", new byte[0], Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT),
+                Op.create("/multi/a", new byte[0], Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT),
+                Op.create("/multi/a/1", new byte[0], Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT),
+
+                /* Delete */
+                Op.delete("/multi/a/1", 0),
+                Op.delete("/multi/a", 0),
+                Op.delete("/multi", 0)
+                ));
+        try {
+            zk.getData("/multi/a/1", false, null);
+            zk.getData("/multi/a", false, null);
+            zk.getData("/multi", false, null);
+                
+            Assert.fail("/multi and all children should be deleted");
+        } catch (KeeperException e) {
+            /* PASS */
+        }
+    }
+
+    @Test
+    public void testSetData() throws Exception {
+
+        String[] names = {"/multi0", "/multi1", "/multi2"};
+        List<Op> ops = new ArrayList<Op>();
+
+        for (int i = 0; i < names.length; i++) {
+            ops.add(Op.create(names[i], new byte[0], Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT));
+            ops.add(Op.setData(names[i], names[i].getBytes(), 0));
+        }
+
+        zk.multi(ops) ;
+
+        for (int i = 0; i < names.length; i++) {
+            Assert.assertArrayEquals(names[i].getBytes(), zk.getData(names[i], false, null));
+        }
+    }
+
+    @Test
+    public void testUpdateConflict() throws Exception {
+    
+        try {
+            zk.multi(Arrays.asList(
+                    Op.create("/multi", new byte[0], Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT),
+                    Op.setData("/multi", "X".getBytes(), 0),
+                    Op.setData("/multi", "Y".getBytes(), 0)
+                    ));
+        } catch (KeeperException e) {
+            /* PASS */
+        }
+
+        /* Updating version solves conflict -- order matters */
+        zk.multi(Arrays.asList(
+                Op.create("/multi", new byte[0], Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT),
+                Op.setData("/multi", "X".getBytes(), 0),
+                Op.setData("/multi", "Y".getBytes(), 1)
+                ));
+
+        Assert.assertArrayEquals(zk.getData("/multi", false, null), "Y".getBytes());
+    }
+
+    @Test
+    public void TestDeleteUpdateConflict() throws Exception {
+        
+        /* Delete of a node folowed by an update of the (now) deleted node */
+        try {
+            zk.multi(Arrays.asList(
+                Op.create("/multi", new byte[0], Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT),
+                Op.delete("/multi", 0),
+                Op.setData("/multi", "Y".getBytes(), 0)
+                ));
+        } catch (KeeperException e) {
+            /* PASS */
+        }
     }
 }

@@ -29,6 +29,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import java.nio.ByteBuffer;
+
 import org.apache.jute.Index;
 import org.apache.jute.InputArchive;
 import org.apache.jute.OutputArchive;
@@ -56,7 +58,14 @@ import org.apache.zookeeper.txn.DeleteTxn;
 import org.apache.zookeeper.txn.ErrorTxn;
 import org.apache.zookeeper.txn.SetACLTxn;
 import org.apache.zookeeper.txn.SetDataTxn;
+import org.apache.zookeeper.txn.Txn;
+import org.apache.zookeeper.txn.MultiTxn;
 import org.apache.zookeeper.txn.TxnHeader;
+
+import org.apache.zookeeper.proto.CreateRequest;
+import org.apache.zookeeper.proto.DeleteRequest;
+import org.apache.zookeeper.proto.SetACLRequest;
+import org.apache.zookeeper.proto.SetDataRequest;
 
 /**
  * This class maintains the tree data structure. It doesn't have any networking
@@ -717,6 +726,8 @@ public class DataTree {
 
         public Stat stat;
 
+        public List<ProcessTxnResult> multiResult;
+        
         /**
          * Equality is defined as the clientId and the cxid being the same. This
          * allows us to use hash tables to track completion of transactions.
@@ -757,6 +768,7 @@ public class DataTree {
             rc.zxid = header.getZxid();
             rc.type = header.getType();
             rc.err = 0;
+            rc.multiResult = null;
             if (rc.zxid > lastProcessedZxid) {
                 lastProcessedZxid = rc.zxid;
             }
@@ -780,15 +792,16 @@ public class DataTree {
                     break;
                 case OpCode.setData:
                     SetDataTxn setDataTxn = (SetDataTxn) txn;
-                    debug = "Set data for  transaction for "
-                            + setDataTxn.getPath();
+                    debug = "Set data transaction for "
+                            + setDataTxn.getPath()
+                            + " to new value=" + setDataTxn.getData();
                     rc.stat = setData(setDataTxn.getPath(), setDataTxn
                             .getData(), setDataTxn.getVersion(), header
                             .getZxid(), header.getTime());
                     break;
                 case OpCode.setACL:
                     SetACLTxn setACLTxn = (SetACLTxn) txn;
-                    debug = "Set ACL for  transaction for "
+                    debug = "Set ACL transaction for "
                             + setACLTxn.getPath();
                     rc.stat = setACL(setACLTxn.getPath(), setACLTxn.getAcl(),
                             setACLTxn.getVersion());
@@ -800,10 +813,43 @@ public class DataTree {
                     ErrorTxn errTxn = (ErrorTxn) txn;
                     rc.err = errTxn.getErr();
                     break;
+                case OpCode.multi:
+                    MultiTxn multiTxn = (MultiTxn) txn ;
+                    List<Txn> txns = multiTxn.getTxns();
+                    debug = "Multi transaction with " + txns.size() + " operations";
+                    rc.multiResult = new ArrayList<ProcessTxnResult>();
+                    for (Txn subtxn : txns) {
+                        ByteBuffer bb = ByteBuffer.wrap(subtxn.getData());
+                        Record record = null;
+                        switch (subtxn.getHdr().getType()) {
+                            case OpCode.create:
+                                record = new CreateTxn();
+                                break;
+                            case OpCode.delete:
+                                record = new DeleteTxn();
+                                break;
+                            case OpCode.setData:
+                                record = new SetDataTxn();
+                                break;
+                            default:
+                                throw new IOException("Invalid type of op");
+                        }
+                        assert(record != null);
+
+                        ZooKeeperServer.byteBuffer2Record(bb, record);
+
+                        ProcessTxnResult subRc = processTxn(subtxn.getHdr(), record);
+                        rc.multiResult.add(subRc);
+                        rc.err += subRc.err;
+                    }
+                    break;
             }
         } catch (KeeperException e) {
-             LOG.debug("Failed: " + debug, e);
+             LOG.warn("Failed: " + debug, e);
              rc.err = e.code().intValue();
+        } catch (IOException e) {
+            LOG.warn("Failed:" + debug, e);
+            rc.err = e.code().intValue();
         }
         return rc;
     }
