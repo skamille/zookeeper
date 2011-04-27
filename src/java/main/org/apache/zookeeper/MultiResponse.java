@@ -6,6 +6,7 @@ import org.apache.jute.Record;
 import org.apache.zookeeper.proto.CreateResponse;
 import org.apache.zookeeper.proto.MultiHeader;
 import org.apache.zookeeper.proto.SetDataResponse;
+import org.apache.zookeeper.proto.ErrorResponse;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -19,7 +20,7 @@ import java.util.List;
  * with a negative type.  Each individual response is in the same format as
  * with the corresponding operation in the original request list.
  */
-public class MultiResponse implements Record {
+public class MultiResponse implements Record, Iterable<OpResult> {
     private List<OpResult> results = new ArrayList<OpResult>();
 
     public void add(OpResult x) {
@@ -27,10 +28,21 @@ public class MultiResponse implements Record {
     }
 
     @Override
+    public Iterator<OpResult> iterator() {
+        return results.iterator();
+    }
+
+    public int size() {
+        return results.size();
+    }
+
+    @Override
     public void serialize(OutputArchive archive, String tag) throws IOException {
         archive.startRecord(this, tag);
+
+        int index = 0;
         for (OpResult result : results) {
-            new MultiHeader(result.getType()).serialize(archive, tag);
+            new MultiHeader(result.getType(), index++, results.size()).serialize(archive, tag);
 
             switch (result.getType()) {
                 case ZooDefs.OpCode.create:
@@ -44,10 +56,14 @@ public class MultiResponse implements Record {
                 case ZooDefs.OpCode.check:
                     new SetDataResponse(((OpResult.CheckResult) result).getStat()).serialize(archive, tag);
                     break;
+                case ZooDefs.OpCode.error:
+                    new ErrorResponse(((OpResult.ErrorResult) result).getErr()).serialize(archive, tag);
+                    break;
                 default:
+                    throw new IOException("Invalid type " + result.getType() + " in MultiResponse");
             }
         }
-        new MultiHeader(-1).serialize(archive, tag);
+        new MultiHeader(-1, index, results.size()).serialize(archive, tag);
         archive.endRecord(this, tag);
     }
 
@@ -58,7 +74,7 @@ public class MultiResponse implements Record {
         archive.startRecord(tag);
         MultiHeader h = new MultiHeader();
         h.deserialize(archive, tag);
-        while (h.getType() > 0) {
+        while (h.getIndex() < h.getSize()) {
             switch (h.getType()) {
                 case ZooDefs.OpCode.create:
                     CreateResponse cr = new CreateResponse();
@@ -80,6 +96,13 @@ public class MultiResponse implements Record {
                     sdr = new SetDataResponse();
                     sdr.deserialize(archive, tag);
                     results.add(new OpResult.CheckResult(sdr.getStat()));
+                    break;
+
+                case ZooDefs.OpCode.error:
+                    //FIXME: need way to more cleanly serialize/deserialize exceptions
+                    ErrorResponse er = new ErrorResponse();
+                    er.deserialize(archive, tag);
+                    results.add(new OpResult.ErrorResult(er.getErr()));
                     break;
 
                 default:

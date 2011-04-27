@@ -117,4 +117,31 @@ public class OpResult {
             return (int) (getType() * 35 + stat.getMzxid());
         }
     }
+
+    public static class ErrorResult extends OpResult {
+        private int err;
+
+        public ErrorResult(int err) {
+            super(ZooDefs.OpCode.error);
+            this.err = err;
+        }
+
+        public int getErr() {
+            return err;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof OpResult)) return false;
+
+            ErrorResult other = (ErrorResult) o;
+            return getType() == other.getType() && err == other.getErr();
+        }
+
+        @Override
+        public int hashCode() {
+            return getType() * 35 + err;
+        }
+    }
 }

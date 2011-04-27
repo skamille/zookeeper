@@ -97,6 +97,8 @@ module org.apache.zookeeper.proto {
     }
     class MultiHeader {
         int type;
+        int index;
+        int size;
     }
     class AuthPacket {
         int type;
@@ -174,7 +176,9 @@ module org.apache.zookeeper.proto {
         int state; // state of the Keeper client runtime
         ustring path;
     }
-
+    class ErrorResponse {
+        int err;
+    }
     class CreateResponse {
         ustring path;
     }

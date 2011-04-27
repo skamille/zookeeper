@@ -66,6 +66,8 @@ import org.apache.zookeeper.proto.SyncRequest;
 import org.apache.zookeeper.proto.SyncResponse;
 import org.apache.zookeeper.server.DataTree;
 
+import org.apache.zookeeper.OpResult.ErrorResult;
+
 import javax.sql.rowset.spi.TransactionalWriter;
 
 /**
@@ -889,19 +891,41 @@ public class ZooKeeper {
 
     public List<OpResult> multi(Iterable<Op> ops) throws InterruptedException, KeeperException {
         MultiTransactionRecord request = new MultiTransactionRecord(ops);
-        return multi_internal(request);
+        return multi_internal(request,null);
     }
 
-    protected List<OpResult> multi_internal(MultiTransactionRecord request) throws InterruptedException, KeeperException {
+    public List<OpResult> multi(Iterable<Op> ops, List<OpResult> results) throws InterruptedException, KeeperException {
+        MultiTransactionRecord request = new MultiTransactionRecord(ops);
+        results.clear();
+        return multi_internal(request, results);
+    }
+
+    protected List<OpResult> multi_internal(MultiTransactionRecord request, List<OpResult> results_out)
+        throws InterruptedException, KeeperException {
         RequestHeader h = new RequestHeader();
         h.setType(ZooDefs.OpCode.multi);
         MultiResponse response = new MultiResponse();
         ReplyHeader r = cnxn.submitRequest(h, request, response, null);
-        if (r.getErr() != 0) {
-            throw KeeperException.create(KeeperException.Code.get(r.getErr()));
+        
+        List<OpResult> results = response.getResultList();
+        
+        ErrorResult fatal_error = null;
+        if (results_out != null) {
+            results_out.addAll(results);
         }
 
-        return response.getResultList();
+        int idx = 0;
+        for (OpResult result : results) {
+            if (result instanceof ErrorResult) {
+                fatal_error = (ErrorResult)result ;        
+            }
+        }
+
+        if (fatal_error != null) {
+            throw KeeperException.create(KeeperException.Code.get(fatal_error.getErr()));
+        }
+
+        return results;
     }
 
     public Transaction transaction() {

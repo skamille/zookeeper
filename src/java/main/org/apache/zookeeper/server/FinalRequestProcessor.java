@@ -54,12 +54,16 @@ import org.apache.zookeeper.server.DataTree.ProcessTxnResult;
 import org.apache.zookeeper.server.ZooKeeperServer.ChangeRecord;
 import org.apache.zookeeper.txn.CreateSessionTxn;
 import org.apache.zookeeper.txn.ErrorTxn;
+import org.apache.zookeeper.txn.MultiTxn;
 
+import org.apache.zookeeper.MultiTransactionRecord;
+import org.apache.zookeeper.Op;
 import org.apache.zookeeper.OpResult;
 import org.apache.zookeeper.OpResult.CheckResult;
 import org.apache.zookeeper.OpResult.CreateResult;
 import org.apache.zookeeper.OpResult.DeleteResult;
 import org.apache.zookeeper.OpResult.SetDataResult;
+import org.apache.zookeeper.OpResult.ErrorResult;
 
 /**
  * This Request processor actually applies any transaction associated with a
@@ -158,7 +162,7 @@ public class FinalRequestProcessor implements RequestProcessor {
             }
 
             KeeperException ke = request.getException();
-            if (ke != null) {
+            if (ke != null && request.type != OpCode.multi) {
                 throw ke;
             }
 
@@ -189,8 +193,7 @@ public class FinalRequestProcessor implements RequestProcessor {
             }
             case OpCode.multi: {
                 lastOp = "MULT";
-                MultiResponse multiResponse = new MultiResponse() ;
-                rsp = multiResponse;
+                rsp = new MultiResponse() ;
 
                 for (ProcessTxnResult subTxnResult : rc.multiResult) {
 
@@ -209,19 +212,14 @@ public class FinalRequestProcessor implements RequestProcessor {
                         case OpCode.setData:
                             subResult = new SetDataResult(subTxnResult.stat);
                             break;
+                        case OpCode.error:
+                            subResult = new ErrorResult(subTxnResult.err) ;
+                            break;
                         default:
                             throw new IOException("Invalid type of op");
                     }
 
-                    //Only set multi-op's error value to first op that failed
-                    //(otherwise it won't map 1-1 to a keeper exception as required).
-                    if (subTxnResult.err != 0) {
-                        if (err == Code.OK) {
-                            err = Code.get(subTxnResult.err);
-                        }
-                    }
-                    
-                    multiResponse.add(subResult);
+                    ((MultiResponse)rsp).add(subResult);
                 }
 
                 break;

@@ -57,14 +57,21 @@ public class MultiTransactionTest extends ZKTestCase implements Watcher {
 
     @Test
     public void testCreate() throws Exception {
-        zk.multi(Arrays.asList(
+        List<OpResult> results = new ArrayList<OpResult>();
+        List<OpResult> results_out ;
+
+        results_out = zk.multi(Arrays.asList(
                 Op.create("/multi0", new byte[0], Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT),
                 Op.create("/multi1", new byte[0], Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT),
                 Op.create("/multi2", new byte[0], Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT)
-                ));
+                ), results);
         zk.getData("/multi0", false, null);
         zk.getData("/multi1", false, null);
         zk.getData("/multi2", false, null);
+    
+        // In absence of failure, results and results_out should both point to
+        // same results array.
+        Assert.assertEquals(results, results_out);
     }
     
     @Test
@@ -74,12 +81,9 @@ public class MultiTransactionTest extends ZKTestCase implements Watcher {
                 Op.create("/multi", new byte[0], Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT),
                 Op.delete("/multi", 0)
                 ));
-        try {
-            zk.getData("/multi", false, null);
-            Assert.fail("/multi should have been deleted");
-        } catch (KeeperException e) {
-            /* Expected */
-        }
+
+        // '/multi' should have been deleted
+        Assert.assertNull(zk.exists("/multi", null));
     }
 
     @Test
@@ -110,15 +114,11 @@ public class MultiTransactionTest extends ZKTestCase implements Watcher {
                 Op.delete("/multi/a", 0),
                 Op.delete("/multi", 0)
                 ));
-        try {
-            zk.getData("/multi/a/1", false, null);
-            zk.getData("/multi/a", false, null);
-            zk.getData("/multi", false, null);
-                
-            Assert.fail("/multi and all children should be deleted");
-        } catch (KeeperException e) {
-            /* PASS */
-        }
+
+        //Verify tree deleted
+        Assert.assertNull(zk.exists("/multi/a/1", null));
+        Assert.assertNull(zk.exists("/multi/a", null));
+        Assert.assertNull(zk.exists("/multi", null));
     }
 
     @Test
@@ -142,17 +142,23 @@ public class MultiTransactionTest extends ZKTestCase implements Watcher {
     @Test
     public void testUpdateConflict() throws Exception {
     
+        Assert.assertNull(zk.exists("/multi", null));
+        
         try {
             zk.multi(Arrays.asList(
                     Op.create("/multi", new byte[0], Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT),
                     Op.setData("/multi", "X".getBytes(), 0),
                     Op.setData("/multi", "Y".getBytes(), 0)
                     ));
+            Assert.fail("Should have thrown a KeeperException for invalid version");
         } catch (KeeperException e) {
-            /* PASS */
+            //PASS
+            LOG.error("STACKTRACE: " + e);
         }
 
-        /* Updating version solves conflict -- order matters */
+        Assert.assertNull(zk.exists("/multi", null));
+
+        //Updating version solves conflict -- order matters
         zk.multi(Arrays.asList(
                 Op.create("/multi", new byte[0], Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT),
                 Op.setData("/multi", "X".getBytes(), 0),
@@ -164,7 +170,7 @@ public class MultiTransactionTest extends ZKTestCase implements Watcher {
 
     @Test
     public void TestDeleteUpdateConflict() throws Exception {
-        
+
         /* Delete of a node folowed by an update of the (now) deleted node */
         try {
             zk.multi(Arrays.asList(
@@ -172,8 +178,41 @@ public class MultiTransactionTest extends ZKTestCase implements Watcher {
                 Op.delete("/multi", 0),
                 Op.setData("/multi", "Y".getBytes(), 0)
                 ));
+            Assert.fail("/multi should have been deleted so setData should have failed");
         } catch (KeeperException e) {
             /* PASS */
         }
+
+        // '/multi' should never have been created as entire op should fail
+        Assert.assertNull(zk.exists("/multi", null)) ;
     }
+
+    @Test
+    public void TestGetResults() throws Exception {
+        
+        List<OpResult> results = new ArrayList<OpResult>();
+
+        /* Delete of a node folowed by an update of the (now) deleted node */
+        try {
+            zk.multi(Arrays.asList(
+                Op.create("/multi", new byte[0], Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT),
+                Op.delete("/multi", 0),
+                Op.setData("/multi", "Y".getBytes(), 0)
+                ), results) ;
+            Assert.fail("/multi should have been deleted so setData should have failed");
+        } catch (KeeperException e) {
+            /* PASS */
+        }
+
+        // '/multi' should never have been created as entire op should fail
+        Assert.assertNull(zk.exists("/multi", null)) ;
+
+        for (OpResult r : results) {
+            LOG.error("RESULT==> " + r);
+        }
+
+    }
+
+
+
 }

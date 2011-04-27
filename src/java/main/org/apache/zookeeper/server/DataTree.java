@@ -818,6 +818,15 @@ public class DataTree {
                     List<Txn> txns = multiTxn.getTxns();
                     debug = "Multi transaction with " + txns.size() + " operations";
                     rc.multiResult = new ArrayList<ProcessTxnResult>();
+                    boolean failed = false;
+                    for (Txn subtxn : txns) {
+                        if (subtxn.getHdr().getType() == OpCode.error) {
+                            failed = true;
+                            break;
+                        }
+                    }
+
+                    boolean post_failed = false;
                     for (Txn subtxn : txns) {
                         ByteBuffer bb = ByteBuffer.wrap(subtxn.getData());
                         Record record = null;
@@ -831,16 +840,34 @@ public class DataTree {
                             case OpCode.setData:
                                 record = new SetDataTxn();
                                 break;
+                            case OpCode.error:
+                                record = new ErrorTxn();
+                                post_failed = true;
+                                break;
                             default:
-                                throw new IOException("Invalid type of op");
+                                throw new IOException("Invalid type of op: " + subtxn.getHdr().getType());
                         }
                         assert(record != null);
 
                         ZooKeeperServer.byteBuffer2Record(bb, record);
+                       
+                        if (failed && subtxn.getHdr().getType() != OpCode.error){
+                            int ec = post_failed ? Code.RUNTIMEINCONSISTENCY.intValue() 
+                                                 : Code.OK.intValue();
+
+                            subtxn.getHdr().setType(OpCode.error);
+                            record = new ErrorTxn(ec);
+                        }
+
+                        if (failed) {
+                            assert(subtxn.getHdr().getType() == OpCode.error) ;
+                        }
 
                         ProcessTxnResult subRc = processTxn(subtxn.getHdr(), record);
                         rc.multiResult.add(subRc);
-                        rc.err += subRc.err;
+                        if (subRc.err != 0 && rc.err == 0) {
+                            rc.err = subRc.err ;
+                        }
                     }
                     break;
             }

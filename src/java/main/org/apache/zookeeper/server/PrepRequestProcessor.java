@@ -423,11 +423,26 @@ public class PrepRequestProcessor extends Thread implements RequestProcessor {
 
                 //Each op in a multi-op must have the same zxid!
                 long zxid = zks.getNextZxid();
+                KeeperException ke = null;
 
                 int index = 0;
                 for(Op op: multiRequest) {
                     Record subrequest = op.toRequestRecord() ;
-                    pRequest2Txn(op.getType(), zxid, request, subrequest);
+
+                    try {
+                        pRequest2Txn(op.getType(), zxid, request, subrequest);
+                    } catch (KeeperException e) {
+                        if (ke == null) {
+                            ke = e;
+                        }
+                        request.hdr.setType(OpCode.error);
+                        request.txn = new ErrorTxn(e.code().intValue());
+                        LOG.error(">>>> Got user-level KeeperException when processing "
+                                + request.toString()
+                                + " Error Path:" + e.getPath()
+                                + " Error:" + e.getMessage());
+                        request.setException(e);
+                    }
 
                     //FIXME: I don't want to have to serialize it here and then
                     //       immediately deserialize in next processor. But I'm 
