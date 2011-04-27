@@ -38,6 +38,6 @@ public class Transaction {
     }
 
     public List<OpResult> commit() throws InterruptedException, KeeperException {
-        return zk.multi_internal(request);
+        return zk.multi_internal(request, null);
     }
 }
