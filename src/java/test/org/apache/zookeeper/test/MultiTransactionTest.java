@@ -6,6 +6,7 @@ import org.apache.zookeeper.ZooDefs.Ids;
 import org.apache.zookeeper.server.ServerCnxnFactory;
 import org.apache.zookeeper.server.SyncRequestProcessor;
 import org.apache.zookeeper.server.ZooKeeperServer;
+import org.apache.zookeeper.OpResult.ErrorResult;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -197,7 +198,8 @@ public class MultiTransactionTest extends ZKTestCase implements Watcher {
             zk.multi(Arrays.asList(
                 Op.create("/multi", new byte[0], Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT),
                 Op.delete("/multi", 0),
-                Op.setData("/multi", "Y".getBytes(), 0)
+                Op.setData("/multi", "Y".getBytes(), 0),
+                Op.create("/foo", new byte[0], Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT)
                 ), results) ;
             Assert.fail("/multi should have been deleted so setData should have failed");
         } catch (KeeperException e) {
@@ -208,7 +210,11 @@ public class MultiTransactionTest extends ZKTestCase implements Watcher {
         Assert.assertNull(zk.exists("/multi", null)) ;
 
         for (OpResult r : results) {
-            LOG.error("RESULT==> " + r);
+            LOG.info("RESULT==> " + r);
+            if (r instanceof ErrorResult) {
+                ErrorResult er = (ErrorResult)r;
+                LOG.info("ERROR RESULT: " + er + " ERR=>" + KeeperException.Code.get(er.getErr()));
+            }
         }
 
     }

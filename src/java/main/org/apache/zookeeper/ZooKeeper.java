@@ -916,8 +916,9 @@ public class ZooKeeper {
 
         int idx = 0;
         for (OpResult result : results) {
-            if (result instanceof ErrorResult) {
-                fatal_error = (ErrorResult)result ;        
+            if (result instanceof ErrorResult && ((ErrorResult)result).getErr() != KeeperException.Code.OK.intValue()) {
+                fatal_error = (ErrorResult)result ;
+                break;
             }
         }
 
