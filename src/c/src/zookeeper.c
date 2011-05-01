@@ -146,9 +146,8 @@ typedef struct _auth_completion_list {
     struct _auth_completion_list *next;
 } auth_completion_list_t;
 
-typedef struct _completion_list {
-    int xid;
-    int completion_type; /* one of the COMPLETION_* values */
+typedef struct completion {
+    int type; /* one of COMPLETION_* values above */
     union {
         void_completion_t void_result;
         stat_completion_t stat_result;
@@ -158,7 +157,12 @@ typedef struct _completion_list {
         acl_completion_t acl_result;
         string_completion_t string_result;
         struct watcher_object_list *watcher_result;
-    } c;
+    };
+} completion_t;
+
+typedef struct _completion_list {
+    int xid;
+    completion_t c;
     const void *data;
     buffer_list_t *buffer;
     struct _completion_list *next;
@@ -1774,13 +1778,13 @@ void process_completions(zhandle_t *zh)
             state = evt.state;
             /* This is a notification so there aren't any pending requests */
             LOG_DEBUG(("Calling a watcher for node [%s], type = %d event=%s",
-                       (evt.path==NULL?"NULL":evt.path), cptr->completion_type,
+                       (evt.path==NULL?"NULL":evt.path), cptr->c.type,
                        watcherEvent2String(type)));
             deliverWatchers(zh,type,state,evt.path, &cptr->c.watcher_result);
             deallocate_WatcherEvent(&evt);
         } else {
             int rc = hdr.err;
-            switch (cptr->completion_type) {
+            switch (cptr->c.type) {
             case COMPLETION_DATA:
                 LOG_DEBUG(("Calling COMPLETION_DATA for xid=%#x rc=%d",cptr->xid,rc));
                 if (rc) {
@@ -2009,7 +2013,7 @@ int zookeeper_process(zhandle_t *zh, int events)
                 struct sync_completion
                         *sc = (struct sync_completion*)cptr->data;
                 sc->rc = rc;
-                switch(cptr->completion_type) {
+                switch(cptr->c.type) {
                 case COMPLETION_DATA:
                     LOG_DEBUG(("Calling COMPLETION_DATA for xid=%#x rc=%d",
                                cptr->xid, rc));
@@ -2156,9 +2160,9 @@ static completion_list_t* create_completion_entry(int xid, int completion_type,
         LOG_ERROR(("out of memory"));
         return 0;
     }
-    c->completion_type = completion_type;
+    c->c.type = completion_type;
     c->data = data;
-    switch(c->completion_type) {
+    switch(c->c.type) {
     case COMPLETION_VOID:
         c->c.void_result = (void_completion_t)dc;
         break;
