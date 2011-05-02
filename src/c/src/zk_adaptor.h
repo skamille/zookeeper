@@ -97,6 +97,10 @@ struct sync_completion {
             struct String_vector strs2;
             struct Stat stat2;
         } strs_stat;
+        struct {
+            int failed_index;
+            completion_head_t clist;
+        } multi;
     } u;
     int complete;
 #ifdef THREADED

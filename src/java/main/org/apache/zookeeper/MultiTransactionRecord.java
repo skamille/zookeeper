@@ -47,7 +47,7 @@ public class MultiTransactionRecord implements Record, Iterable<Op> {
         archive.startRecord(this, tag);
         int index = 0 ;
         for (Op op : ops) {
-            MultiHeader h = new MultiHeader(op.getType(), index++, ops.size());
+            MultiHeader h = new MultiHeader(op.getType(), false, -1);
             h.serialize(archive, tag);
             switch (op.getType()) {
                 case ZooDefs.OpCode.check:
@@ -70,7 +70,7 @@ public class MultiTransactionRecord implements Record, Iterable<Op> {
                     throw new IOException("Invalid type of op");
             }
         }
-        new MultiHeader(-1, index, ops.size()).serialize(archive, tag);
+        new MultiHeader(-1, true, -1).serialize(archive, tag);
         archive.endRecord(this, tag);
     }
 
@@ -80,7 +80,7 @@ public class MultiTransactionRecord implements Record, Iterable<Op> {
         MultiHeader h = new MultiHeader();
         h.deserialize(archive, tag);
 
-        while (h.getIndex() < h.getSize()) {
+        while (!h.getDone()) {
             switch (h.getType()) {
                 case ZooDefs.OpCode.check:
                     CheckVersionRequest cvr = new CheckVersionRequest();

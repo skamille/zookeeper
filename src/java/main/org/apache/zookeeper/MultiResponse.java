@@ -42,7 +42,9 @@ public class MultiResponse implements Record, Iterable<OpResult> {
 
         int index = 0;
         for (OpResult result : results) {
-            new MultiHeader(result.getType(), index++, results.size()).serialize(archive, tag);
+            int err = result.getType() == ZooDefs.OpCode.error ? ((OpResult.ErrorResult)result).getErr() : 0;
+
+            new MultiHeader(result.getType(), false, err).serialize(archive, tag);
 
             switch (result.getType()) {
                 case ZooDefs.OpCode.create:
@@ -63,7 +65,7 @@ public class MultiResponse implements Record, Iterable<OpResult> {
                     throw new IOException("Invalid type " + result.getType() + " in MultiResponse");
             }
         }
-        new MultiHeader(-1, index, results.size()).serialize(archive, tag);
+        new MultiHeader(-1, true, -1).serialize(archive, tag);
         archive.endRecord(this, tag);
     }
 
@@ -74,7 +76,7 @@ public class MultiResponse implements Record, Iterable<OpResult> {
         archive.startRecord(tag);
         MultiHeader h = new MultiHeader();
         h.deserialize(archive, tag);
-        while (h.getIndex() < h.getSize()) {
+        while (!h.getDone()) {
             switch (h.getType()) {
                 case ZooDefs.OpCode.create:
                     CreateResponse cr = new CreateResponse();

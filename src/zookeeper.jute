@@ -97,8 +97,8 @@ module org.apache.zookeeper.proto {
     }
     class MultiHeader {
         int type;
-        int index;
-        int size;
+        boolean done;
+        int err;
     }
     class AuthPacket {
         int type;

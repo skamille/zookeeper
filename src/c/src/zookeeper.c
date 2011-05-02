@@ -139,6 +139,7 @@ struct ACL_vector ZOO_CREATOR_ALL_ACL = { 1, _CREATOR_ALL_ACL_ACL};
 #define COMPLETION_STRINGLIST_STAT 4
 #define COMPLETION_ACLLIST 5
 #define COMPLETION_STRING 6
+#define COMPLETION_MULTI 7
 
 typedef struct _auth_completion_list {
     void_completion_t completion;
@@ -157,6 +158,7 @@ typedef struct completion {
         acl_completion_t acl_result;
         string_completion_t string_result;
         struct watcher_object_list *watcher_result;
+        multi_completion_t multi_result;
     };
 } completion_t;
 
@@ -1834,6 +1836,50 @@ static void process_sync_completion(int type,
         case COMPLETION_VOID: {
             break;
         }
+        case COMPLETION_MULTI: {
+            int index = 0;
+            completion_head_t *clist = &sc->u.multi.clist;
+            struct MultiHeader h = { 0 };
+            deserialize_MultiHeader(ia, "multiheader", &h);
+            sc->rc = 0 ;
+            sc->u.multi.failed_index = -1;
+
+            while (!h.done) {
+                completion_list_t *entry = dequeue_completion(clist);
+
+                //Multi uses sync completions to tansfer result from each
+                //op back to call. So completion must be a sync completion
+                assert(entry->c.void_result == SYNCHRONOUS_MARKER);
+
+                struct sync_completion *sub_sc = (struct sync_completion*)entry->data;
+                sub_sc->rc = h.err;
+
+                //Only process the sync completion of there were no errors on 
+                //this op
+                if (h.err == 0) {
+                    process_sync_completion(entry->c.type, sub_sc, ia);  
+                } else {
+                    //FIXME: Now that error is stored in header, we don't need this extra
+                    //error response. So we can go ahead and get rid of that on the java (server
+                    //and client) side too.
+                    struct ErrorResponse e;
+                    deserialize_ErrorResponse(ia, "error", &e);
+                    sub_sc->rc = e.err;
+
+                    assert(e.err == h.err);
+
+                    if (sc->rc == 0) {
+                        sc->rc = h.err ;
+                        sc->u.multi.failed_index = index;
+                    }
+                }
+
+                deserialize_MultiHeader(ia, "multiheader", &h);
+                index++;
+            }
+            break;
+        }
+
         default: {
             LOG_DEBUG(("UNKNOWN completion type"));
             break;
@@ -1944,6 +1990,20 @@ void process_completions(zhandle_t *zh)
                     cptr->c.void_result(rc, cptr->data);
                 }
                 break;
+            case COMPLETION_MULTI: {
+                struct sync_completion *sc = (struct sync_completion *)cptr->data;
+                sc->rc = rc;
+
+                if (sc->rc == 0) {
+                    process_sync_completion(COMPLETION_MULTI, sc, ia);
+                }
+              
+                notify_sync_completion(sc);
+                
+                break;
+            }
+            default:
+                LOG_DEBUG(("Unsupported completion type=%d", cptr->c.type));
             }
         }
         destroy_completion_entry(cptr);
@@ -2294,6 +2354,12 @@ static int add_string_completion(zhandle_t *zh, int xid,
     return add_completion(zh, xid, COMPLETION_STRING, dc, data, 0,0);
 }
 
+static int add_multi_completion(zhandle_t *zh, int xid, multi_completion_t dc,
+        const void *data)
+{
+    return add_completion(zh, xid, COMPLETION_MULTI, dc, data, 0,0);
+}
+
 int zookeeper_close(zhandle_t *zh)
 {
     int rc=ZOK;
@@ -2387,6 +2453,40 @@ static int isValidPath(const char* path, const int flags) {
 }
 
 /*---------------------------------------------------------------------------*
+ * REQUEST INIT HELPERS
+ *---------------------------------------------------------------------------*/
+/* Common Request init helper functions to reduce code duplication */
+static int Request_path_init(zhandle_t *zh, int flags, 
+        char **path_out, const char *path)
+{
+    assert(path_out);
+    
+    *path_out = prepend_string(zh, path);
+    if (zh == NULL || !isValidPath(*path_out, flags)) {
+        free_duplicate_path(*path_out, path);
+        return ZBADARGUMENTS;
+    }
+    if (is_unrecoverable(zh)) {
+        free_duplicate_path(*path_out, path);
+        return ZINVALIDSTATE;
+    }
+
+    return ZOK;
+}
+
+static int Request_path_watch_init(zhandle_t *zh, int flags,
+        char **path_out, const char *path,
+        int32_t *watch_out, uint32_t watch)
+{
+    int rc = Request_path_init(zh, flags, path_out, path);
+    if (rc != ZOK) {
+        return rc;
+    }
+    *watch_out = watch;
+    return ZOK;
+}
+
+/*---------------------------------------------------------------------------*
  * ASYNC API
  *---------------------------------------------------------------------------*/
 int zoo_aget(zhandle_t *zh, const char *path, int watch, data_completion_t dc,
@@ -2433,29 +2533,32 @@ int zoo_awget(zhandle_t *zh, const char *path,
     return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
 
+static int SetDataRequest_init(zhandle_t *zh, struct SetDataRequest *req,
+        const char *path, const char *buffer, int buflen, int version)
+{
+    assert(req);
+    int rc = Request_path_init(zh, 0, &req->path, path);
+    if (rc != ZOK) {
+        return rc;
+    }
+    req->data.buff = (char*)buffer;
+    req->data.len = buflen;
+    req->version = version;
+
+    return ZOK;
+}
+
 int zoo_aset(zhandle_t *zh, const char *path, const char *buffer, int buflen,
         int version, stat_completion_t dc, const void *data)
 {
     struct oarchive *oa;
     struct RequestHeader h = { .xid = get_xid(), .type = SETDATA_OP};
     struct SetDataRequest req;
-    int rc;
-    char *server_path;
-    server_path = prepend_string(zh, path);
-
-    if (zh==0 || !isValidPath(server_path, 0)) {
-        free_duplicate_path(server_path, path);
-        return ZBADARGUMENTS;
-    }
-    if (is_unrecoverable(zh)) {
-        free_duplicate_path(server_path, path);
-        return ZINVALIDSTATE;
+    int rc = SetDataRequest_init(zh, &req, path, buffer, buflen, version);
+    if (rc != ZOK) {
+        return rc;
     }
     oa = create_buffer_oarchive();
-    req.path = (char*)server_path;
-    req.data.buff = (char*)buffer;
-    req.data.len = buflen;
-    req.version = version;
     rc = serialize_RequestHeader(oa, "header", &h);
     rc = rc < 0 ? rc : serialize_SetDataRequest(oa, "req", &req);
     enter_critical(zh);
@@ -2463,7 +2566,7 @@ int zoo_aset(zhandle_t *zh, const char *path, const char *buffer, int buflen,
     rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, get_buffer(oa),
             get_buffer_len(oa));
     leave_critical(zh);
-    free_duplicate_path(server_path, path);
+    free_duplicate_path(req.path, path);
     /* We queued the buffer, so don't free it */
     close_buffer_oarchive(&oa, 0);
 
@@ -2472,37 +2575,6 @@ int zoo_aset(zhandle_t *zh, const char *path, const char *buffer, int buflen,
     /* make a best (non-blocking) effort to send the requests asap */
     adaptor_send_queue(zh, 0);
     return (rc < 0)?ZMARSHALLINGERROR:ZOK;
-}
-
-/* Common Request init helper functions to reduce code duplication */
-static int Request_path_init(zhandle_t *zh, int flags, 
-        char **path_out, const char *path)
-{
-    assert(path_out);
-    
-    *path_out = prepend_string(zh, path);
-    if (zh == NULL || !isValidPath(*path_out, flags)) {
-        free_duplicate_path(*path_out, path);
-        return ZBADARGUMENTS;
-    }
-    if (is_unrecoverable(zh)) {
-        free_duplicate_path(*path_out, path);
-        return ZINVALIDSTATE;
-    }
-
-    return ZOK;
-}
-
-static int Request_path_watch_init(zhandle_t *zh, int flags,
-        char **path_out, const char *path,
-        int32_t *watch_out, uint32_t watch)
-{
-    int rc = Request_path_init(zh, flags, path_out, path);
-    if (rc != ZOK) {
-        return rc;
-    }
-    *watch_out = watch;
-    return ZOK;
 }
 
 static int CreateRequest_init(zhandle_t *zh, struct CreateRequest *req,
@@ -2821,6 +2893,221 @@ int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
     /* make a best (non-blocking) effort to send the requests asap */
     adaptor_send_queue(zh, 0);
     return (rc < 0)?ZMARSHALLINGERROR:ZOK;
+}
+
+static int zoo_amulti_va(zhandle_t *zh, 
+        multi_completion_t completion, const void *data, va_list va)
+{
+    struct RequestHeader h = { .xid = get_xid(), .type = MULTI_OP };
+    struct oarchive *oa = create_buffer_oarchive();
+    int rc=ZOK;
+    int index = 0;
+
+    rc = rc < 0 ? rc : serialize_RequestHeader(oa, "header", &h);
+
+    //FIXME: ASYNC DOESN"T WORK YET
+    if (completion != SYNCHRONOUS_MARKER) {
+        LOG_ERROR(("asynchronous multi op not implemented fully yet"));
+        return ZUNIMPLEMENTED;
+    }
+
+    struct sync_completion *sc = (struct sync_completion *)data;
+    completion_head_t *clist = &sc->u.multi.clist;
+
+    while(1){
+        completion_list_t *entry = NULL;
+        int type = va_arg(va, int);
+        struct MultiHeader mh = { .type=type, .done=0, .err=0 };
+       
+        if (type == MULTI_OP_DELIM) {
+            break;
+        }
+        
+        rc = rc < 0 ? rc : serialize_MultiHeader(oa, "multiheader", &mh);
+     
+        switch(type) {
+            case CREATE_OP: {
+                struct CreateRequest req; 
+
+                /* PARSE */
+                char *path = va_arg(va, char*);
+                char *value = va_arg(va, char*);
+                int valuelen = va_arg(va, int);
+                struct ACL_vector * acl = va_arg(va, struct ACL_vector*);
+                int flags = va_arg(va, int);
+                char *path_buffer = va_arg(va, char*);
+                int path_buffer_len = va_arg(va, int);
+
+                /* GRAB EXPECTED DELIMITER AND BAIL IF NOT PRESENT */
+                int delim = va_arg(va, int);
+                if (delim != MULTI_OP_DELIM) {
+                    //FIXME: Cleanup: Need to clean up 'oa', 'sc', as well as any sub 'sc'
+                    //inside our clist that we've built up in loop
+                    return ZBADARGUMENTS;
+                }
+               
+                rc = CreateRequest_init(zh, &req, 
+                        path, value, valuelen, acl, flags);
+                if (rc != ZOK) {
+                    //FIXME: Cleanup
+                    return rc;
+                }
+
+                struct sync_completion *sc = alloc_sync_completion();
+                if (!sc) {
+                    //FIXME: Cleanup
+                    return ZSYSTEMERROR;
+                }
+                sc->u.str.str = path_buffer;
+                sc->u.str.str_len = path_buffer_len;
+
+                rc = rc < 0 ? rc : serialize_CreateRequest(oa, "req", &req);
+                free_duplicate_path(req.path, path);
+                entry = create_completion_entry(h.xid, COMPLETION_STRING, SYNCHRONOUS_MARKER, sc, NULL); 
+                break;
+            }
+
+            case DELETE_OP: {
+               struct DeleteRequest req;
+
+               /* PARSE */
+               char *path = va_arg(va, char*);
+               int version = va_arg(va, int);
+
+                /* GRAB EXPECTED DELIMITER AND BAIL IF NOT PRESENT */
+                int delim = va_arg(va, int);
+                if (delim != MULTI_OP_DELIM) {
+                    //FIXME: Cleanup
+                    return ZBADARGUMENTS;
+                }
+ 
+                rc = DeleteRequest_init(zh, &req, path, version);
+                if (rc != ZOK) {
+                    //FIXME: Cleanup
+                    return rc;
+                }
+
+                struct sync_completion *sc = alloc_sync_completion();
+                if (!sc) {
+                    //FIXME: Cleanup
+                    return ZSYSTEMERROR;
+                }
+
+                rc = rc < 0 ? rc : serialize_DeleteRequest(oa, "req", &req);
+                free_duplicate_path(req.path, path);
+                entry = create_completion_entry(h.xid, COMPLETION_VOID, SYNCHRONOUS_MARKER, sc, NULL); 
+                break;
+            }
+
+            case SETDATA_OP: {
+                struct SetDataRequest req;
+
+                /* Parse stage */
+                char *path = va_arg(va, char*);
+                char *buffer = va_arg(va, char*);
+                int buflen = va_arg(va, int);
+                int version = va_arg(va, int);
+
+                /* GRAB EXPECTED DELIMITER AND BAIL IF NOT PRESENT */
+                int delim = va_arg(va, int);
+                if (delim != MULTI_OP_DELIM) {
+                    //FIXME: Cleanup 
+                    return ZBADARGUMENTS;
+                }
+
+                rc = SetDataRequest_init(zh, &req, path, buffer, buflen, version);
+                if (rc != ZOK) {
+                    //FIXME: Cleanup
+                    return rc;
+                }
+
+                struct sync_completion *sc = alloc_sync_completion();
+                if (!sc) {
+                    //FIXME: Cleanup
+                    return ZSYSTEMERROR;
+                }
+                rc = rc < 0 ? rc : serialize_SetDataRequest(oa, "req", &req);
+                free_duplicate_path(req.path, path);
+                entry = create_completion_entry(h.xid, COMPLETION_STAT, SYNCHRONOUS_MARKER, sc, NULL);
+                break;
+            }
+
+            default:
+                LOG_ERROR(("Unimplemented sub-op type=%d in multi-op", type));
+                return ZUNIMPLEMENTED; 
+        }
+
+        queue_completion(clist, entry, 0);
+        index++;
+    }
+
+    struct MultiHeader mh = { .type=-1, .done=1, .err=0 };
+    rc = rc < 0 ? rc : serialize_MultiHeader(oa, "multiheader", &mh);
+  
+    /* BEGIN: CRTICIAL SECTION */
+    enter_critical(zh);
+    rc = rc < 0 ? rc : add_multi_completion(zh, h.xid, completion, data);
+    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, get_buffer(oa),
+            get_buffer_len(oa));
+    leave_critical(zh);
+    
+    /* We queued the buffer, so don't free it */
+    close_buffer_oarchive(&oa, 0);
+
+    LOG_DEBUG(("Sending multi request xid=%#x with %d subrequests to %s",
+            h.xid, index, format_current_endpoint_info(zh)));
+    /* make a best (non-blocking) effort to send the requests asap */
+    adaptor_send_queue(zh, 0);
+
+    return (rc < 0) ? ZMARSHALLINGERROR : ZOK;
+}
+
+
+int zoo_amulti_real(zhandle_t *zh, multi_completion_t completion, const void *data, ...)
+{
+    int rc;
+    va_list va;
+    va_start(va, data);
+
+    rc = zoo_amulti_va(zh, completion, data, va);
+
+    va_end(va);
+
+    return rc;
+}
+
+int zoo_multi_real(zhandle_t *zh, ...)
+{
+    int rc;
+    va_list va;
+ 
+    struct sync_completion *sc = alloc_sync_completion();
+    if (!sc) {
+        return ZSYSTEMERROR;
+    }
+    sc->u.multi.failed_index = -1;
+   
+    va_start(va, zh);
+
+    /* CALL INTO HELPER */
+    rc = zoo_amulti_va(zh, SYNCHRONOUS_MARKER, sc, va);
+    if (rc == ZOK) {
+        wait_sync_completion(sc);
+        rc = sc->rc;
+    }
+    free_sync_completion(sc);
+    va_end(va);
+
+    /* FIXME: We now which index failed (if any) because it gets copied
+     * back out into 'sc.u.multi.value'. We have no way of returning it
+     * back to teh caller though as we need to return the ZK error code
+     * corresponding to that failed op. 
+     *
+     * Maybe we need to add an extra argument here (int *) that we can
+     * copy out into regardless of if its sync or async.
+     */
+
+    return rc;
 }
 
 /* specify timeout of 0 to make the function non-blocking */

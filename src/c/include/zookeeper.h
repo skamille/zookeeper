@@ -20,6 +20,7 @@
 #define ZOOKEEPER_H_
 
 #include <stdlib.h>
+#include <stdarg.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <stdio.h>
@@ -112,6 +113,8 @@ enum ZOO_ERRORS {
   ZNOTHING = -117, /*!< (not error) no server responses to process */
   ZSESSIONMOVED = -118 /*!<session moved to another server, so operation is ignored */ 
 };
+
+#define MULTI_OP_DELIM 0x2001CEE0
 
 #ifdef __cplusplus
 extern "C" {
@@ -587,6 +590,28 @@ typedef void
 typedef void (*acl_completion_t)(int rc, struct ACL_vector *acl,
         struct Stat *stat, const void *data);
 
+/** 
+ * \brief signature of a multi completion function that returns the index
+ * of the failing op in a multi op. This value is only meaningful if 'rc'
+ * does NOT have a value of ZOK.
+ * 
+ * This method will be invoked at the end of a asynchronous call and also as 
+ * a result of connection loss or timeout.
+ * \param rc the error code of the call. Connection loss/timeout triggers 
+ * the completion with one of the following error codes:
+ * ZCONNECTIONLOSS -- lost connection to the server
+ * ZOPERATIONTIMEOUT -- connection timed out
+ * Data related events trigger the completion with error codes listed the 
+ * Exceptions section of the documentation of the function that initiated the
+ * call. (Zero indicates call was successful.)
+ * \param index the index of failing op (or -1 if N/A).
+ * \param data the pointer that was passed by the caller when the function
+ *   that this completion corresponds to was invoked. The programmer
+ *   is responsible for any memory freeing associated with the data
+ *   pointer.
+ */
+typedef void (*multi_completion_t)(int rc, int index, const void *data);
+
 /**
  * \brief get the state of the zookeeper connection.
  * 
@@ -973,6 +998,26 @@ ZOOAPI int zoo_aget_acl(zhandle_t *zh, const char *path, acl_completion_t comple
  */
 ZOOAPI int zoo_aset_acl(zhandle_t *zh, const char *path, int version, 
         struct ACL_vector *acl, void_completion_t, const void *data);
+
+/**
+ * \brief atomically commits multiple zookeeper operations.
+ *
+ * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
+ * \param completion the routine to invoke when the request completes. The completion
+ * will be triggered with any of the error codes that can that can be returned by the 
+ * ops supported by a multi op (see \ref zoo_acreate, \ref zoo_adelete, \ref zoo_aset).
+ * \param data the data that will be passed to the completion routine when
+ * the function completes.
+ * \param '...' is a variadic argument list containing all the ops
+ * to be atomically committed. Each op must be delimited by MULTI_OP_DELIM
+ * to make parsing safer.
+ * \return the return code for the function call. This can be any of the
+ * values that can be returned by the ops supported by a multi op (see
+ * \ref zoo_acreate, \ref zoo_adelete, \ref zoo_aset).
+ */
+#define zoo_amulti(zh, ...) zoo_amulti_real(zh, ##__VA_ARGS__, MULTI_OP_DELIM)
+ZOOAPI int zoo_amulti_real(zhandle_t *zh, multi_completion_t completion,
+        const void *data, ...);
 
 /**
  * \brief return an error string.
@@ -1403,6 +1448,20 @@ ZOOAPI int zoo_get_acl(zhandle_t *zh, const char *path, struct ACL_vector *acl,
  */
 ZOOAPI int zoo_set_acl(zhandle_t *zh, const char *path, int version,
                            const struct ACL_vector *acl);
+
+/**
+ * \brief atomically commits multiple zookeeper operations synchronously.
+ *
+ * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
+ * \param '...' is a variadic argument list containing all the ops
+ * to be atomically committed. Each op must be delimited by MULTI_OP_DELIM
+ * to make parsing safer.
+ * \return the return code for the function call. This can be any of the
+ * values that can be returned by the ops supported by a multi op (see
+ * \ref zoo_create, \ref zoo_delete, \ref zoo_set).
+ */
+#define zoo_multi(zh, ...) zoo_multi_real(zh, ##__VA_ARGS__, MULTI_OP_DELIM)
+ZOOAPI int zoo_multi_real(zhandle_t *zh, ...);
 
 #ifdef __cplusplus
 }

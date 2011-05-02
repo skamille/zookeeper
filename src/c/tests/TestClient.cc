@@ -39,6 +39,7 @@ using namespace std;
 #include <errno.h>
 #include <recordio.h>
 #include "Util.h"
+#include <proto.h>
 
 struct buff_struct_2 {
     int32_t len;
@@ -186,6 +187,7 @@ class Zookeeper_simpleSystem : public CPPUNIT_NS::TestFixture
     CPPUNIT_TEST_SUITE(Zookeeper_simpleSystem);
     CPPUNIT_TEST(testAsyncWatcherAutoReset);
     CPPUNIT_TEST(testDeserializeString);
+    CPPUNIT_TEST(testMulti);
 #ifdef THREADED
     CPPUNIT_TEST(testNullData);
 #ifdef ZOO_IPV6_ENABLED
@@ -644,6 +646,26 @@ public:
 
         CPPUNIT_ASSERT(Stat_eq(&stat_a, &stat_b));
         CPPUNIT_ASSERT(stat_a.numChildren == 4);
+    }
+
+    void testMulti() {
+        int rc;
+        watchctx_t ctx;
+        zhandle_t *zk = createClient(&ctx);
+       
+        int sz = 512;
+        char p1[sz], p2[sz], p3[sz];
+
+        p1[0] = '\0';
+        p2[0] = '\0';
+        p3[0] = '\0';
+
+        rc = zoo_multi(zk, 
+            CREATE_OP, "/multi",   "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz, MULTI_OP_DELIM,
+            CREATE_OP, "/multi/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p2, sz, MULTI_OP_DELIM,
+            CREATE_OP, "/multi/b", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p3, sz, MULTI_OP_DELIM
+        );
+        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
     }
 
     void testIPV6() {
