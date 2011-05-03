@@ -187,8 +187,10 @@ class Zookeeper_simpleSystem : public CPPUNIT_NS::TestFixture
     CPPUNIT_TEST_SUITE(Zookeeper_simpleSystem);
     CPPUNIT_TEST(testAsyncWatcherAutoReset);
     CPPUNIT_TEST(testDeserializeString);
-    CPPUNIT_TEST(testMulti);
 #ifdef THREADED
+    CPPUNIT_TEST(testMulti);
+    CPPUNIT_TEST(testAsyncMulti);
+    CPPUNIT_TEST(testMultiFail);
     CPPUNIT_TEST(testNullData);
 #ifdef ZOO_IPV6_ENABLED
     CPPUNIT_TEST(testIPV6);
@@ -384,7 +386,20 @@ public:
         count++;
     }
 
+    static void multi_completion_fn(int rc, const void *data) {
+        CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
+        count++;
+    }
+
     static void waitForCreateCompletion(int seconds) {
+        time_t expires = time(0) + seconds;
+        while(count == 0 && time(0) < expires) {
+            sleep(1);
+        }
+        count--;
+    }
+
+    static void waitForMultiCompletion(int seconds) {
         time_t expires = time(0) + seconds;
         while(count == 0 && time(0) < expires) {
             sleep(1);
@@ -660,12 +675,83 @@ public:
         p2[0] = '\0';
         p3[0] = '\0';
 
-        rc = zoo_multi(zk, 
-            CREATE_OP, "/multi",   "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz, MULTI_OP_DELIM,
-            CREATE_OP, "/multi/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p2, sz, MULTI_OP_DELIM,
-            CREATE_OP, "/multi/b", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p3, sz, MULTI_OP_DELIM
-        );
+        opresult_t results[3] ;
+        op_t ops[3] = {
+            { CREATE_OP, { "/multi",   "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz }},
+            { CREATE_OP, { "/multi/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p2, sz }},
+            { CREATE_OP, { "/multi/b", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p3, sz }}
+        };
+        
+        rc = zoo_multi(zk, 3, ops, results);
         CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
+
+
+        CPPUNIT_ASSERT(strcmp(p1, "/multi") == 0);
+        CPPUNIT_ASSERT(strcmp(p2, "/multi/a") == 0);
+        CPPUNIT_ASSERT(strcmp(p3, "/multi/b") == 0);
+
+        CPPUNIT_ASSERT_EQUAL(results[0].err, 0);
+        CPPUNIT_ASSERT_EQUAL(results[1].err, 0);
+        CPPUNIT_ASSERT_EQUAL(results[2].err, 0);
+    }
+
+    void testAsyncMulti() {
+        int rc;
+        watchctx_t ctx;
+        zhandle_t *zk = createClient(&ctx);
+       
+        int sz = 512;
+        char p1[sz], p2[sz], p3[sz];
+
+        p1[0] = '\0';
+        p2[0] = '\0';
+        p3[0] = '\0';
+
+        opresult_t results[3] ;
+        results[0].err = -1;
+        results[1].err = -2;
+        results[2].err = -3;
+
+        op_t ops[3] = {
+            { CREATE_OP, { "/multi_async",   "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz }},
+            { CREATE_OP, { "/multi_async/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p2, sz }},
+            { CREATE_OP, { "/multi_async/b", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p3, sz }}
+        };
+        
+        rc = zoo_amulti(zk, 3, ops, results, multi_completion_fn, 0);
+        waitForMultiCompletion(10);
+        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
+
+        CPPUNIT_ASSERT(strcmp(p1, "/multi_async") == 0);
+        CPPUNIT_ASSERT(strcmp(p2, "/multi_async/a") == 0);
+        CPPUNIT_ASSERT(strcmp(p3, "/multi_async/b") == 0);
+
+        CPPUNIT_ASSERT_EQUAL(results[0].err, 0);
+        CPPUNIT_ASSERT_EQUAL(results[1].err, 0);
+        CPPUNIT_ASSERT_EQUAL(results[2].err, 0);
+    }
+
+    void testMultiFail() {
+        int rc;
+        watchctx_t ctx;
+        zhandle_t *zk = createClient(&ctx);
+       
+        int sz = 512;
+        char p1[sz], p2[sz], p3[sz];
+
+        p1[0] = '\0';
+        p2[0] = '\0';
+        p3[0] = '\0';
+
+        opresult_t results[3] ;
+        op_t ops[3] = {
+            { CREATE_OP, { "/multi_fail",   "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz }},
+            { CREATE_OP, { "/multi_fail",   "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p2, sz }},
+            { CREATE_OP, { "/multi_fail/b", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p3, sz }}
+        };
+        
+        rc = zoo_multi(zk, 3, ops, results);
+        CPPUNIT_ASSERT_EQUAL((int)ZNODEEXISTS, rc);
     }
 
     void testIPV6() {

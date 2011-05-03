@@ -158,7 +158,6 @@ typedef struct completion {
         acl_completion_t acl_result;
         string_completion_t string_result;
         struct watcher_object_list *watcher_result;
-        multi_completion_t multi_result;
     };
 } completion_t;
 
@@ -169,6 +168,7 @@ typedef struct _completion_list {
     buffer_list_t *buffer;
     struct _completion_list *next;
     watcher_registration_t* watcher;
+    completion_head_t clist; /* For multi-op */
 } completion_list_t;
 
 const char*err2string(int err);
@@ -178,9 +178,11 @@ static const char* format_current_endpoint_info(zhandle_t* zh);
 
 /* completion routine forward declarations */
 static int add_completion(zhandle_t *zh, int xid, int completion_type,
-        const void *dc, const void *data, int add_to_front,watcher_registration_t* wo);
+        const void *dc, const void *data, int add_to_front, 
+        watcher_registration_t* wo, completion_head_t *clist);
 static completion_list_t* create_completion_entry(int xid, int completion_type,
-        const void *dc, const void *data,watcher_registration_t* wo);
+        const void *dc, const void *data, watcher_registration_t* wo, 
+        completion_head_t *clist);
 static void destroy_completion_entry(completion_list_t* c);
 static void queue_completion_nolock(completion_head_t *list, completion_list_t *c,
         int add_to_front);
@@ -1721,7 +1723,7 @@ static int queue_session_event(zhandle_t *zh, int state)
         close_buffer_oarchive(&oa, 1);
         goto error;
     }
-    cptr = create_completion_entry(WATCHER_EVENT_XID,-1,0,0,0);
+    cptr = create_completion_entry(WATCHER_EVENT_XID,-1,0,0,0,0);
     cptr->buffer = allocate_buffer(get_buffer(oa), get_buffer_len(oa));
     cptr->buffer->curr_offset = get_buffer_len(oa);
     if (!cptr->buffer) {
@@ -1836,54 +1838,94 @@ static void process_sync_completion(int type,
         case COMPLETION_VOID: {
             break;
         }
-        case COMPLETION_MULTI: {
-            int index = 0;
-            completion_head_t *clist = &sc->u.multi.clist;
-            struct MultiHeader h = { 0 };
-            deserialize_MultiHeader(ia, "multiheader", &h);
-            sc->rc = 0 ;
-            sc->u.multi.failed_index = -1;
-
-            while (!h.done) {
-                completion_list_t *entry = dequeue_completion(clist);
-
-                //Multi uses sync completions to tansfer result from each
-                //op back to call. So completion must be a sync completion
-                assert(entry->c.void_result == SYNCHRONOUS_MARKER);
-
-                struct sync_completion *sub_sc = (struct sync_completion*)entry->data;
-                sub_sc->rc = h.err;
-
-                //Only process the sync completion of there were no errors on 
-                //this op
-                if (h.err == 0) {
-                    process_sync_completion(entry->c.type, sub_sc, ia);  
-                } else {
-                    //FIXME: Now that error is stored in header, we don't need this extra
-                    //error response. So we can go ahead and get rid of that on the java (server
-                    //and client) side too.
-                    struct ErrorResponse e;
-                    deserialize_ErrorResponse(ia, "error", &e);
-                    sub_sc->rc = e.err;
-
-                    assert(e.err == h.err);
-
-                    if (sc->rc == 0) {
-                        sc->rc = h.err ;
-                        sc->u.multi.failed_index = index;
-                    }
-                }
-
-                deserialize_MultiHeader(ia, "multiheader", &h);
-                index++;
-            }
-            break;
-        }
-
         default: {
             LOG_DEBUG(("UNKNOWN completion type"));
             break;
         }
+    }
+}
+
+void deserialize_response(int type, int xid, int rc, completion_list_t *cptr, struct iarchive *ia)
+{
+    switch (type) {
+    case COMPLETION_DATA:
+        LOG_DEBUG(("Calling COMPLETION_DATA for xid=%#x rc=%d",cptr->xid,rc));
+        if (rc) {
+            cptr->c.data_result(rc, 0, 0, 0, cptr->data);
+        } else {
+            struct GetDataResponse res;
+            deserialize_GetDataResponse(ia, "reply", &res);
+            cptr->c.data_result(rc, res.data.buff, res.data.len,
+                    &res.stat, cptr->data);
+            deallocate_GetDataResponse(&res);
+        }
+        break;
+    case COMPLETION_STAT:
+        LOG_DEBUG(("Calling COMPLETION_STAT for xid=%#x rc=%d",cptr->xid,rc));
+        if (rc) {
+            cptr->c.stat_result(rc, 0, cptr->data);
+        } else {
+            struct SetDataResponse res;
+            deserialize_SetDataResponse(ia, "reply", &res);
+            cptr->c.stat_result(rc, &res.stat, cptr->data);
+            deallocate_SetDataResponse(&res);
+        }
+        break;
+    case COMPLETION_STRINGLIST:
+        LOG_DEBUG(("Calling COMPLETION_STRINGLIST for xid=%#x rc=%d",cptr->xid,rc));
+        if (rc) {
+            cptr->c.strings_result(rc, 0, cptr->data);
+        } else {
+            struct GetChildrenResponse res;
+            deserialize_GetChildrenResponse(ia, "reply", &res);
+            cptr->c.strings_result(rc, &res.children, cptr->data);
+            deallocate_GetChildrenResponse(&res);
+        }
+        break;
+    case COMPLETION_STRINGLIST_STAT:
+        LOG_DEBUG(("Calling COMPLETION_STRINGLIST_STAT for xid=%#x rc=%d",cptr->xid,rc));
+        if (rc) {
+            cptr->c.strings_stat_result(rc, 0, 0, cptr->data);
+        } else {
+            struct GetChildren2Response res;
+            deserialize_GetChildren2Response(ia, "reply", &res);
+            cptr->c.strings_stat_result(rc, &res.children, &res.stat, cptr->data);
+            deallocate_GetChildren2Response(&res);
+        }
+        break;
+    case COMPLETION_STRING:
+        LOG_DEBUG(("%s:%d: Calling COMPLETION_STRING for xid=%#x rc=%d",__func__, __LINE__, cptr->xid,rc));
+        if (rc) {
+            cptr->c.string_result(rc, 0, cptr->data);
+        } else {
+            struct CreateResponse res;
+            deserialize_CreateResponse(ia, "reply", &res);
+            cptr->c.string_result(rc, res.path, cptr->data);
+            deallocate_CreateResponse(&res);
+        }
+        break;
+    case COMPLETION_ACLLIST:
+        LOG_DEBUG(("Calling COMPLETION_ACLLIST for xid=%#x rc=%d",cptr->xid,rc));
+        if (rc) {
+            cptr->c.acl_result(rc, 0, 0, cptr->data);
+        } else {
+            struct GetACLResponse res;
+            deserialize_GetACLResponse(ia, "reply", &res);
+            cptr->c.acl_result(rc, &res.acl, &res.stat, cptr->data);
+            deallocate_GetACLResponse(&res);
+        }
+        break;
+    case COMPLETION_VOID:
+        LOG_DEBUG(("Calling COMPLETION_VOID for xid=%#x rc=%d",cptr->xid,rc));
+        if (xid == PING_XID) {
+            // We want to skip the ping
+        } else {
+            assert(cptr->c.void_result);
+            cptr->c.void_result(rc, cptr->data);
+        }
+        break;
+   default:
+        LOG_DEBUG(("Unsupported completion type=%d", cptr->c.type));
     }
 }
 
@@ -1913,97 +1955,59 @@ void process_completions(zhandle_t *zh)
             deliverWatchers(zh,type,state,evt.path, &cptr->c.watcher_result);
             deallocate_WatcherEvent(&evt);
         } else {
-            int rc = hdr.err;
-            switch (cptr->c.type) {
-            case COMPLETION_DATA:
-                LOG_DEBUG(("Calling COMPLETION_DATA for xid=%#x rc=%d",cptr->xid,rc));
-                if (rc) {
-                    cptr->c.data_result(rc, 0, 0, 0, cptr->data);
-                } else {
-                    struct GetDataResponse res;
-                    deserialize_GetDataResponse(ia, "reply", &res);
-                    cptr->c.data_result(rc, res.data.buff, res.data.len,
-                            &res.stat, cptr->data);
-                    deallocate_GetDataResponse(&res);
-                }
-                break;
-            case COMPLETION_STAT:
-                LOG_DEBUG(("Calling COMPLETION_STAT for xid=%#x rc=%d",cptr->xid,rc));
-                if (rc) {
-                    cptr->c.stat_result(rc, 0, cptr->data);
-                } else {
-                    struct SetDataResponse res;
-                    deserialize_SetDataResponse(ia, "reply", &res);
-                    cptr->c.stat_result(rc, &res.stat, cptr->data);
-                    deallocate_SetDataResponse(&res);
-                }
-                break;
-            case COMPLETION_STRINGLIST:
-                LOG_DEBUG(("Calling COMPLETION_STRINGLIST for xid=%#x rc=%d",cptr->xid,rc));
-                if (rc) {
-                    cptr->c.strings_result(rc, 0, cptr->data);
-                } else {
-                    struct GetChildrenResponse res;
-                    deserialize_GetChildrenResponse(ia, "reply", &res);
-                    cptr->c.strings_result(rc, &res.children, cptr->data);
-                    deallocate_GetChildrenResponse(&res);
-                }
-                break;
-            case COMPLETION_STRINGLIST_STAT:
-                LOG_DEBUG(("Calling COMPLETION_STRINGLIST_STAT for xid=%#x rc=%d",cptr->xid,rc));
-                if (rc) {
-                    cptr->c.strings_stat_result(rc, 0, 0, cptr->data);
-                } else {
-                    struct GetChildren2Response res;
-                    deserialize_GetChildren2Response(ia, "reply", &res);
-                    cptr->c.strings_stat_result(rc, &res.children, &res.stat, cptr->data);
-                    deallocate_GetChildren2Response(&res);
-                }
-                break;
-            case COMPLETION_STRING:
-                LOG_DEBUG(("Calling COMPLETION_STRING for xid=%#x rc=%d",cptr->xid,rc));
-                if (rc) {
-                    cptr->c.string_result(rc, 0, cptr->data);
-                } else {
-                    struct CreateResponse res;
-                    deserialize_CreateResponse(ia, "reply", &res);
-                    cptr->c.string_result(rc, res.path, cptr->data);
-                    deallocate_CreateResponse(&res);
-                }
-                break;
-            case COMPLETION_ACLLIST:
-                LOG_DEBUG(("Calling COMPLETION_ACLLIST for xid=%#x rc=%d",cptr->xid,rc));
-                if (rc) {
-                    cptr->c.acl_result(rc, 0, 0, cptr->data);
-                } else {
-                    struct GetACLResponse res;
-                    deserialize_GetACLResponse(ia, "reply", &res);
-                    cptr->c.acl_result(rc, &res.acl, &res.stat, cptr->data);
-                    deallocate_GetACLResponse(&res);
-                }
-                break;
-            case COMPLETION_VOID:
-                LOG_DEBUG(("Calling COMPLETION_VOID for xid=%#x rc=%d",cptr->xid,rc));
-                if (hdr.xid == PING_XID) {
-                    // We want to skip the ping
-                } else {
-                    cptr->c.void_result(rc, cptr->data);
-                }
-                break;
-            case COMPLETION_MULTI: {
-                struct sync_completion *sc = (struct sync_completion *)cptr->data;
-                sc->rc = rc;
+            if (cptr->c.type == COMPLETION_MULTI) {
+                int multi_err = 0;
+                completion_head_t *clist = &cptr->clist;
+                assert(clist);
+                struct MultiHeader mhdr = { 0 };
+                deserialize_MultiHeader(ia, "multiheader", &mhdr);
+                while (!mhdr.done) {
+                    completion_list_t *entry = dequeue_completion(clist);
+                    assert(entry);
 
-                if (sc->rc == 0) {
-                    process_sync_completion(COMPLETION_MULTI, sc, ia);
+                    if (mhdr.type == -1) {
+                        struct ErrorResponse er;
+                        deserialize_ErrorResponse(ia, "error", &er);
+                        mhdr.err = er.err == 0 ? ZRUNTIMEINCONSISTENCY : er.err;
+
+                        //FIXME: set error code properly in header on server side
+                        if (er.err != 0 && er.err != ZRUNTIMEINCONSISTENCY) {
+                            multi_err = er.err;
+                        }
+                    }
+
+                    deserialize_response(entry->c.type, hdr.xid, mhdr.err, entry, ia);
+
+                    deserialize_MultiHeader(ia, "multiheader", &mhdr);
                 }
-              
-                notify_sync_completion(sc);
+
+                /* Now invoke the tail completion now that we're finished with sub-ops in multi */
+                completion_list_t *tail = dequeue_completion(clist);
                 
-                break;
-            }
-            default:
-                LOG_DEBUG(("Unsupported completion type=%d", cptr->c.type));
+                //FIXME: More code de-dup .. this snarfed from sync loop
+                if (tail->c.void_result == SYNCHRONOUS_MARKER) {
+                    struct sync_completion
+                        *sc = (struct sync_completion*)tail->data;
+                    sc->rc = multi_err;
+                
+                    LOG_DEBUG(("Processing sync_completion with type=%d xid=%#x rc=%d",
+                            tail->c.type, tail->xid, sc->rc));
+                
+                    process_sync_completion(tail->c.type, sc, ia); 
+                
+                    notify_sync_completion(sc);
+
+                    destroy_completion_entry(tail);
+                } else {
+                    LOG_DEBUG(("Queueing asynchronous response"));
+
+                    tail->buffer = bptr;
+                    queue_completion(&zh->completions_to_process, tail, 0);
+                    close_buffer_iarchive(&ia);
+                    return;
+                }
+            } else {
+                deserialize_response(cptr->c.type, hdr.xid, hdr.err, cptr, ia);
             }
         }
         destroy_completion_entry(cptr);
@@ -2080,7 +2084,7 @@ int zookeeper_process(zhandle_t *zh, int events)
             type = evt.type;
             path = evt.path;
             /* We are doing a notification, so there is no pending request */
-            c = create_completion_entry(WATCHER_EVENT_XID,-1,0,0,0);
+            c = create_completion_entry(WATCHER_EVENT_XID,-1,0,0,0,0);
             c->buffer = bptr;
             c->c.watcher_result = collectWatchers(zh, type, path);
 
@@ -2208,7 +2212,7 @@ static void destroy_watcher_registration(watcher_registration_t* wo){
 }
 
 static completion_list_t* create_completion_entry(int xid, int completion_type,
-        const void *dc, const void *data,watcher_registration_t* wo)
+        const void *dc, const void *data,watcher_registration_t* wo, completion_head_t *clist)
 {
     completion_list_t *c = calloc(1,sizeof(completion_list_t));
     if (!c) {
@@ -2242,6 +2246,12 @@ static completion_list_t* create_completion_entry(int xid, int completion_type,
     }
     c->xid = xid;
     c->watcher = wo;
+    
+    if (clist) {
+        c->clist = *clist;
+    } else {
+        //c->clist = NULL;
+    }
 
     return c;
 }
@@ -2290,10 +2300,10 @@ static void queue_completion(completion_head_t *list, completion_list_t *c,
 
 static int add_completion(zhandle_t *zh, int xid, int completion_type,
         const void *dc, const void *data, int add_to_front,
-        watcher_registration_t* wo)
+        watcher_registration_t* wo, completion_head_t *clist)
 {
     completion_list_t *c =create_completion_entry(xid, completion_type, dc,
-            data,wo);
+            data, wo, clist);
     int rc = 0;
     if (!c)
         return ZSYSTEMERROR;
@@ -2315,49 +2325,49 @@ static int add_completion(zhandle_t *zh, int xid, int completion_type,
 static int add_data_completion(zhandle_t *zh, int xid, data_completion_t dc,
         const void *data,watcher_registration_t* wo)
 {
-    return add_completion(zh, xid, COMPLETION_DATA, dc, data, 0,wo);
+    return add_completion(zh, xid, COMPLETION_DATA, dc, data, 0, wo, 0);
 }
 
 static int add_stat_completion(zhandle_t *zh, int xid, stat_completion_t dc,
         const void *data,watcher_registration_t* wo)
 {
-    return add_completion(zh, xid, COMPLETION_STAT, dc, data, 0,wo);
+    return add_completion(zh, xid, COMPLETION_STAT, dc, data, 0, wo, 0);
 }
 
 static int add_strings_completion(zhandle_t *zh, int xid,
         strings_completion_t dc, const void *data,watcher_registration_t* wo)
 {
-    return add_completion(zh, xid, COMPLETION_STRINGLIST, dc, data, 0,wo);
+    return add_completion(zh, xid, COMPLETION_STRINGLIST, dc, data, 0, wo, 0);
 }
 
 static int add_strings_stat_completion(zhandle_t *zh, int xid,
         strings_stat_completion_t dc, const void *data,watcher_registration_t* wo)
 {
-    return add_completion(zh, xid, COMPLETION_STRINGLIST_STAT, dc, data, 0,wo);
+    return add_completion(zh, xid, COMPLETION_STRINGLIST_STAT, dc, data, 0, wo, 0);
 }
 
 static int add_acl_completion(zhandle_t *zh, int xid, acl_completion_t dc,
         const void *data)
 {
-    return add_completion(zh, xid, COMPLETION_ACLLIST, dc, data, 0,0);
+    return add_completion(zh, xid, COMPLETION_ACLLIST, dc, data, 0, 0, 0);
 }
 
 static int add_void_completion(zhandle_t *zh, int xid, void_completion_t dc,
         const void *data)
 {
-    return add_completion(zh, xid, COMPLETION_VOID, dc, data, 0,0);
+    return add_completion(zh, xid, COMPLETION_VOID, dc, data, 0, 0, 0);
 }
 
 static int add_string_completion(zhandle_t *zh, int xid,
         string_completion_t dc, const void *data)
 {
-    return add_completion(zh, xid, COMPLETION_STRING, dc, data, 0,0);
+    return add_completion(zh, xid, COMPLETION_STRING, dc, data, 0, 0, 0);
 }
 
-static int add_multi_completion(zhandle_t *zh, int xid, multi_completion_t dc,
-        const void *data)
+static int add_multi_completion(zhandle_t *zh, int xid, void_completion_t dc,
+        const void *data, completion_head_t *clist)
 {
-    return add_completion(zh, xid, COMPLETION_MULTI, dc, data, 0,0);
+    return add_completion(zh, xid, COMPLETION_MULTI, dc, data, 0,0, clist);
 }
 
 int zookeeper_close(zhandle_t *zh)
@@ -2895,158 +2905,118 @@ int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
     return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
 
-static int zoo_amulti_va(zhandle_t *zh, 
-        multi_completion_t completion, const void *data, va_list va)
+/* Completions for multi-op results */
+static void opresult_string_completion(int err, const char *value, const void *data)
+{
+    struct opresult *result = (struct opresult *)data;
+    assert(result);
+    result->err = err;
+    if (value) {
+        strcpy(result->path, (char *)value);
+    } else {
+        result->path = NULL;
+    }
+}
+
+static void opresult_void_completion(int err, const void *data)
+{
+    struct opresult *result = (struct opresult *)data;
+    result->err = err;
+}
+
+static void opresult_stat_completion(int err, const struct Stat *stat, const void *data)
+{
+    struct opresult *result = (struct opresult *)data;
+    result->err = err;
+    *result->stat = *stat;
+}   
+
+static void opresult_multi_completion(int err, const void *data)
+{
+    //printf("%s: called: err=%d\n", __func__, err);
+}
+
+int zoo_amulti(zhandle_t *zh, int count, const op_t *ops,
+        opresult_t *results, void_completion_t completion, const void *data)
 {
     struct RequestHeader h = { .xid = get_xid(), .type = MULTI_OP };
     struct oarchive *oa = create_buffer_oarchive();
-    int rc=ZOK;
+    int rc = ZOK;
     int index = 0;
+    completion_head_t clist = { 0 };
 
     rc = rc < 0 ? rc : serialize_RequestHeader(oa, "header", &h);
 
-    //FIXME: ASYNC DOESN"T WORK YET
-    if (completion != SYNCHRONOUS_MARKER) {
-        LOG_ERROR(("asynchronous multi op not implemented fully yet"));
-        return ZUNIMPLEMENTED;
-    }
-
-    struct sync_completion *sc = (struct sync_completion *)data;
-    completion_head_t *clist = &sc->u.multi.clist;
-
-    while(1){
+    for (index=0; index < count; index++) {
+        const op_t *op = ops+index;
+        opresult_t *result = results+index;
         completion_list_t *entry = NULL;
-        int type = va_arg(va, int);
-        struct MultiHeader mh = { .type=type, .done=0, .err=0 };
-       
-        if (type == MULTI_OP_DELIM) {
-            break;
-        }
-        
+
+        struct MultiHeader mh = { .type=op->type, .done=0, .err=-1 };
         rc = rc < 0 ? rc : serialize_MultiHeader(oa, "multiheader", &mh);
      
-        switch(type) {
+        switch(op->type) {
             case CREATE_OP: {
-                struct CreateRequest req; 
+                struct CreateRequest req;
+                create_op_t cop = op->create_op;
 
-                /* PARSE */
-                char *path = va_arg(va, char*);
-                char *value = va_arg(va, char*);
-                int valuelen = va_arg(va, int);
-                struct ACL_vector * acl = va_arg(va, struct ACL_vector*);
-                int flags = va_arg(va, int);
-                char *path_buffer = va_arg(va, char*);
-                int path_buffer_len = va_arg(va, int);
-
-                /* GRAB EXPECTED DELIMITER AND BAIL IF NOT PRESENT */
-                int delim = va_arg(va, int);
-                if (delim != MULTI_OP_DELIM) {
-                    //FIXME: Cleanup: Need to clean up 'oa', 'sc', as well as any sub 'sc'
-                    //inside our clist that we've built up in loop
-                    return ZBADARGUMENTS;
-                }
-               
-                rc = CreateRequest_init(zh, &req, 
-                        path, value, valuelen, acl, flags);
-                if (rc != ZOK) {
-                    //FIXME: Cleanup
-                    return rc;
-                }
-
-                struct sync_completion *sc = alloc_sync_completion();
-                if (!sc) {
-                    //FIXME: Cleanup
-                    return ZSYSTEMERROR;
-                }
-                sc->u.str.str = path_buffer;
-                sc->u.str.str_len = path_buffer_len;
-
+                rc = rc < 0 ? rc : CreateRequest_init(zh, &req, cop.path, cop.data, cop.datalen, cop.acl, cop.flags);
                 rc = rc < 0 ? rc : serialize_CreateRequest(oa, "req", &req);
-                free_duplicate_path(req.path, path);
-                entry = create_completion_entry(h.xid, COMPLETION_STRING, SYNCHRONOUS_MARKER, sc, NULL); 
+                result->path = cop.path_buf;
+
+                enter_critical(zh);
+                entry = create_completion_entry(h.xid, COMPLETION_STRING, opresult_string_completion, result, 0, 0); 
+                leave_critical(zh);
+                free_duplicate_path(req.path, cop.path);
                 break;
             }
 
             case DELETE_OP: {
-               struct DeleteRequest req;
-
-               /* PARSE */
-               char *path = va_arg(va, char*);
-               int version = va_arg(va, int);
-
-                /* GRAB EXPECTED DELIMITER AND BAIL IF NOT PRESENT */
-                int delim = va_arg(va, int);
-                if (delim != MULTI_OP_DELIM) {
-                    //FIXME: Cleanup
-                    return ZBADARGUMENTS;
-                }
- 
-                rc = DeleteRequest_init(zh, &req, path, version);
-                if (rc != ZOK) {
-                    //FIXME: Cleanup
-                    return rc;
-                }
-
-                struct sync_completion *sc = alloc_sync_completion();
-                if (!sc) {
-                    //FIXME: Cleanup
-                    return ZSYSTEMERROR;
-                }
-
+                struct DeleteRequest req;
+                delete_op_t dop = op->delete_op;
+                rc = rc < 0 ? rc : DeleteRequest_init(zh, &req, dop.path, dop.version);
                 rc = rc < 0 ? rc : serialize_DeleteRequest(oa, "req", &req);
-                free_duplicate_path(req.path, path);
-                entry = create_completion_entry(h.xid, COMPLETION_VOID, SYNCHRONOUS_MARKER, sc, NULL); 
+
+                enter_critical(zh);
+                entry = create_completion_entry(h.xid, COMPLETION_VOID, opresult_void_completion, result, 0, 0); 
+                leave_critical(zh);
+                free_duplicate_path(req.path, dop.path);
                 break;
             }
 
             case SETDATA_OP: {
                 struct SetDataRequest req;
-
-                /* Parse stage */
-                char *path = va_arg(va, char*);
-                char *buffer = va_arg(va, char*);
-                int buflen = va_arg(va, int);
-                int version = va_arg(va, int);
-
-                /* GRAB EXPECTED DELIMITER AND BAIL IF NOT PRESENT */
-                int delim = va_arg(va, int);
-                if (delim != MULTI_OP_DELIM) {
-                    //FIXME: Cleanup 
-                    return ZBADARGUMENTS;
-                }
-
-                rc = SetDataRequest_init(zh, &req, path, buffer, buflen, version);
-                if (rc != ZOK) {
-                    //FIXME: Cleanup
-                    return rc;
-                }
-
-                struct sync_completion *sc = alloc_sync_completion();
-                if (!sc) {
-                    //FIXME: Cleanup
-                    return ZSYSTEMERROR;
-                }
+                setdata_op_t sop = op->setdata_op;
+                rc = rc < 0 ? rc : SetDataRequest_init(zh, &req, sop.path, sop.data, sop.datalen, sop.version);
                 rc = rc < 0 ? rc : serialize_SetDataRequest(oa, "req", &req);
-                free_duplicate_path(req.path, path);
-                entry = create_completion_entry(h.xid, COMPLETION_STAT, SYNCHRONOUS_MARKER, sc, NULL);
+                result->path = sop.path_buf;
+                //FIXME: result.stat = op.setdata.;
+
+                enter_critical(zh);
+                entry = create_completion_entry(h.xid, COMPLETION_STAT, opresult_stat_completion, result, 0, 0); 
+                leave_critical(zh);
+                free_duplicate_path(req.path, sop.path);
                 break;
             }
 
             default:
-                LOG_ERROR(("Unimplemented sub-op type=%d in multi-op", type));
+                LOG_ERROR(("Unimplemented sub-op type=%d in multi-op", op->type));
                 return ZUNIMPLEMENTED; 
         }
 
-        queue_completion(clist, entry, 0);
-        index++;
+        queue_completion(&clist, entry, 0);
     }
 
-    struct MultiHeader mh = { .type=-1, .done=1, .err=0 };
+    /* Queue up tail void completion to be called when all ops finish */
+    completion_list_t *entry = create_completion_entry(h.xid, COMPLETION_VOID, completion, data, 0, 0);
+    queue_completion(&clist, entry, 0);
+    
+    struct MultiHeader mh = { .type=-1, .done=1, .err=-1 };
     rc = rc < 0 ? rc : serialize_MultiHeader(oa, "multiheader", &mh);
   
     /* BEGIN: CRTICIAL SECTION */
     enter_critical(zh);
-    rc = rc < 0 ? rc : add_multi_completion(zh, h.xid, completion, data);
+    rc = rc < 0 ? rc : add_multi_completion(zh, h.xid, opresult_multi_completion, NULL, &clist);
     rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, get_buffer(oa),
             get_buffer_len(oa));
     leave_critical(zh);
@@ -3062,50 +3032,21 @@ static int zoo_amulti_va(zhandle_t *zh,
     return (rc < 0) ? ZMARSHALLINGERROR : ZOK;
 }
 
-
-int zoo_amulti_real(zhandle_t *zh, multi_completion_t completion, const void *data, ...)
+int zoo_multi(zhandle_t *zh, int count, const op_t *ops, opresult_t *results)
 {
     int rc;
-    va_list va;
-    va_start(va, data);
-
-    rc = zoo_amulti_va(zh, completion, data, va);
-
-    va_end(va);
-
-    return rc;
-}
-
-int zoo_multi_real(zhandle_t *zh, ...)
-{
-    int rc;
-    va_list va;
  
     struct sync_completion *sc = alloc_sync_completion();
     if (!sc) {
         return ZSYSTEMERROR;
     }
-    sc->u.multi.failed_index = -1;
    
-    va_start(va, zh);
-
-    /* CALL INTO HELPER */
-    rc = zoo_amulti_va(zh, SYNCHRONOUS_MARKER, sc, va);
+    rc = zoo_amulti(zh, count, ops, results, SYNCHRONOUS_MARKER, sc);
     if (rc == ZOK) {
         wait_sync_completion(sc);
         rc = sc->rc;
     }
     free_sync_completion(sc);
-    va_end(va);
-
-    /* FIXME: We now which index failed (if any) because it gets copied
-     * back out into 'sc.u.multi.value'. We have no way of returning it
-     * back to teh caller though as we need to return the ZK error code
-     * corresponding to that failed op. 
-     *
-     * Maybe we need to add an extra argument here (int *) that we can
-     * copy out into regardless of if its sync or async.
-     */
 
     return rc;
 }
