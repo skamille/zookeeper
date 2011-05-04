@@ -68,20 +68,16 @@ public class MultiTransactionRecord implements Record, Iterable<Op> {
             h.serialize(archive, tag);
             switch (op.getType()) {
                 case ZooDefs.OpCode.check:
-                    Op.Check check = (Op.Check) op;
-                    new CheckVersionRequest(check.getPath(), check.getVersion()).serialize(archive, tag);
+                    op.toRequestRecord().serialize(archive, tag);
                     break;
                 case ZooDefs.OpCode.create:
-                    Op.Create create = (Op.Create) op;
-                    new CreateRequest(create.getPath(), create.getData(), create.getAcl(), create.getFlags()).serialize(archive, tag);
+                    op.toRequestRecord().serialize(archive, tag);
                     break;
                 case ZooDefs.OpCode.delete:
-                    Op.Delete delete = (Op.Delete) op;
-                    new DeleteRequest(delete.getPath(), delete.getVersion()).serialize(archive, tag);
+                    op.toRequestRecord().serialize(archive, tag);
                     break;
                 case ZooDefs.OpCode.setData:
-                    Op.SetData update = (Op.SetData) op;
-                    new SetDataRequest(update.getPath(), update.getData(), update.getVersion()).serialize(archive, tag);
+                    op.toRequestRecord().serialize(archive, tag);
                     break;
                 default:
                     throw new IOException("Invalid type of op");

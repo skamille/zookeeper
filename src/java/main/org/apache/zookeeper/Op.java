@@ -18,12 +18,11 @@
 package org.apache.zookeeper;
 
 import org.apache.jute.Record;
+import org.apache.zookeeper.data.ACL;
+import org.apache.zookeeper.proto.CheckVersionRequest;
 import org.apache.zookeeper.proto.CreateRequest;
 import org.apache.zookeeper.proto.DeleteRequest;
-import org.apache.zookeeper.proto.SetACLRequest;
 import org.apache.zookeeper.proto.SetDataRequest;
-import org.apache.zookeeper.proto.CheckVersionRequest;
-import org.apache.zookeeper.data.ACL;
 
 import java.util.Arrays;
 import java.util.Iterator;
@@ -91,22 +90,6 @@ public abstract class Op {
             this.flags = createMode.toFlag();
         }
 
-        public String getPath() {
-            return path;
-        }
-
-        public byte[] getData() {
-            return data;
-        }
-
-        public List<ACL> getAcl() {
-            return acl;
-        }
-
-        public int getFlags() {
-            return flags;
-        }
-
         @Override
         public boolean equals(Object o) {
             if (this == o) return true;
@@ -115,8 +98,8 @@ public abstract class Op {
             Create op = (Create) o;
 
             boolean aclEquals = true;
-            Iterator<ACL> i = op.getAcl().iterator();
-            for (ACL acl : getAcl()) {
+            Iterator<ACL> i = op.acl.iterator();
+            for (ACL acl : op.acl) {
                 boolean hasMoreData = i.hasNext();
                 if (!hasMoreData) {
                     aclEquals = false;
@@ -152,14 +135,6 @@ public abstract class Op {
             this.version = version;
         }
 
-        public String getPath() {
-            return path;
-        }
-
-        public int getVersion() {
-            return version;
-        }
-
         @Override
         public boolean equals(Object o) {
             if (this == o) return true;
@@ -193,18 +168,6 @@ public abstract class Op {
             this.version = version;
         }
 
-        public String getPath() {
-            return path;
-        }
-
-        public byte[] getData() {
-            return data;
-        }
-
-        public int getVersion() {
-            return version;
-        }
-
         @Override
         public boolean equals(Object o) {
             if (this == o) return true;
@@ -222,7 +185,7 @@ public abstract class Op {
 
         @Override
         public Record toRequestRecord() {
-            return new SetDataRequest(path, getData(), version);
+            return new SetDataRequest(path, data, version);
         }
     }
 
@@ -234,14 +197,6 @@ public abstract class Op {
             super(ZooDefs.OpCode.check);
             this.path = path;
             this.version = version;
-        }
-
-        public String getPath() {
-            return path;
-        }
-
-        public int getVersion() {
-            return version;
         }
 
         @Override
