@@ -906,7 +906,10 @@ public class ZooKeeper {
         h.setType(ZooDefs.OpCode.multi);
         MultiResponse response = new MultiResponse();
         ReplyHeader r = cnxn.submitRequest(h, request, response, null);
-        
+        if (r.getErr() != 0) {
+            throw KeeperException.create(KeeperException.Code.get(r.getErr()));
+        }
+
         List<OpResult> results = response.getResultList();
         
         ErrorResult fatal_error = null;
@@ -914,7 +917,6 @@ public class ZooKeeper {
             results_out.addAll(results);
         }
 
-        int idx = 0;
         for (OpResult result : results) {
             if (result instanceof ErrorResult && ((ErrorResult)result).getErr() != KeeperException.Code.OK.intValue()) {
                 fatal_error = (ErrorResult)result ;
