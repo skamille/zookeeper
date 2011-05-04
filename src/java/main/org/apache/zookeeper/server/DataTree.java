@@ -21,6 +21,7 @@ package org.apache.zookeeper.server;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -794,7 +795,7 @@ public class DataTree {
                     SetDataTxn setDataTxn = (SetDataTxn) txn;
                     debug = "Set data transaction for "
                             + setDataTxn.getPath()
-                            + " to new value=" + setDataTxn.getData();
+                            + " to new value=" + Arrays.toString(setDataTxn.getData());
                     rc.stat = setData(setDataTxn.getPath(), setDataTxn
                             .getData(), setDataTxn.getVersion(), header
                             .getZxid(), header.getTime());
