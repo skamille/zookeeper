@@ -1978,7 +1978,13 @@ void process_completions(zhandle_t *zh)
                         deserialize_ErrorResponse(ia, "error", &er);
                         mhdr.err = er.err == 0 ? ZRUNTIMEINCONSISTENCY : er.err;
 
-                        //FIXME: set error code properly in header on server side
+                        /* Server sets a value of '0' in error's err field if
+                         * that op didn't fail, and ZRUNTIMEINCONSISTENCY for
+                         * any op that happened after the failing op. The first
+                         * non-zero error is the op that caused the multi op
+                         * to fail. This should always match the overall return
+                         * value from the multi-op.
+                         */
                         if (er.err != 0 && er.err != ZRUNTIMEINCONSISTENCY) {
                             multi_err = er.err;
                         }
@@ -1992,16 +1998,14 @@ void process_completions(zhandle_t *zh)
                 /* Now invoke the tail completion now that we're finished with sub-ops in multi */
                 completion_list_t *tail = dequeue_completion(clist);
                 
-                //FIXME: More code de-dup .. this snarfed from sync loop
                 if (tail->c.void_result == SYNCHRONOUS_MARKER) {
-                    struct sync_completion
-                        *sc = (struct sync_completion*)tail->data;
+                    struct sync_completion *sc = (struct sync_completion*)tail->data;
                     sc->rc = multi_err;
                 
                     process_sync_completion(tail, sc, ia); 
                 
                     notify_sync_completion(sc);
-
+                    zh->outstanding_sync--;
                     destroy_completion_entry(tail);
                 } else {
                     LOG_DEBUG(("Queueing asynchronous response"));
@@ -2998,6 +3002,8 @@ int zoo_amulti(zhandle_t *zh, int count, const op_t *ops,
                 free_duplicate_path(req.path, sop.path);
                 break;
             }
+
+            //FIXME: check op
 
             default:
                 LOG_ERROR(("Unimplemented sub-op type=%d in multi-op", op->type));
