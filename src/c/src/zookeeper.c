@@ -1761,12 +1761,17 @@ completion_list_t *dequeue_completion(completion_head_t *list)
     return cptr;
 }
 
-static void process_sync_completion(int type,
+static void process_sync_completion(
+        completion_list_t *cptr,
         struct sync_completion *sc,
         struct iarchive *ia)
 {
-    switch(type) {
-        case COMPLETION_DATA: {
+    LOG_DEBUG(("Processing sync_completion with type=%d xid=%#x rc=%d",
+            cptr->c.type, cptr->xid, sc->rc));
+
+    switch(cptr->c.type) {
+    case COMPLETION_DATA: 
+        if (sc->rc==0) {
             struct GetDataResponse res;
             int len;
             deserialize_GetDataResponse(ia, "reply", &res);
@@ -1785,33 +1790,37 @@ static void process_sync_completion(int type,
             }
             sc->u.data.stat = res.stat;
             deallocate_GetDataResponse(&res);
-            break;
         }
-        case COMPLETION_STAT: {
+        break;
+    case COMPLETION_STAT:
+        if (sc->rc==0) {
             struct SetDataResponse res;
             deserialize_SetDataResponse(ia, "reply", &res);
             sc->u.stat = res.stat;
             deallocate_SetDataResponse(&res);
-            break;
         }
-        case COMPLETION_STRINGLIST: {
+        break;
+    case COMPLETION_STRINGLIST:
+        if (sc->rc==0) {
             struct GetChildrenResponse res;
             deserialize_GetChildrenResponse(ia, "reply", &res);
             sc->u.strs2 = res.children;
             /* We don't deallocate since we are passing it back */
             // deallocate_GetChildrenResponse(&res);
-            break;
         }
-        case COMPLETION_STRINGLIST_STAT: {
+        break;
+    case COMPLETION_STRINGLIST_STAT:
+        if (sc->rc==0) {
             struct GetChildren2Response res;
             deserialize_GetChildren2Response(ia, "reply", &res);
             sc->u.strs_stat.strs2 = res.children;
             sc->u.strs_stat.stat2 = res.stat;
             /* We don't deallocate since we are passing it back */
             // deallocate_GetChildren2Response(&res);
-            break;
         }
-        case COMPLETION_STRING: {
+        break;
+    case COMPLETION_STRING:
+        if (sc->rc==0) {
             struct CreateResponse res;
             int len;
             deserialize_CreateResponse(ia, "reply", &res);
@@ -1824,24 +1833,23 @@ static void process_sync_completion(int type,
                 sc->u.str.str[len - 1] = '\0';
             }
             deallocate_CreateResponse(&res);
-            break;
         }
-        case COMPLETION_ACLLIST: {
+        break;
+    case COMPLETION_ACLLIST:
+        if (sc->rc==0) {
             struct GetACLResponse res;
             deserialize_GetACLResponse(ia, "reply", &res);
             sc->u.acl.acl = res.acl;
             sc->u.acl.stat = res.stat;
             /* We don't deallocate since we are passing it back */
             //deallocate_GetACLResponse(&res);
-            break;
         }
-        case COMPLETION_VOID: {
-            break;
-        }
-        default: {
-            LOG_DEBUG(("UNKNOWN completion type"));
-            break;
-        }
+        break;
+    case COMPLETION_VOID:
+        break;
+    default:
+        LOG_DEBUG(("UNKNOWN completion type"));
+        break;
     }
 }
 
@@ -1990,10 +1998,7 @@ void process_completions(zhandle_t *zh)
                         *sc = (struct sync_completion*)tail->data;
                     sc->rc = multi_err;
                 
-                    LOG_DEBUG(("Processing sync_completion with type=%d xid=%#x rc=%d",
-                            tail->c.type, tail->xid, sc->rc));
-                
-                    process_sync_completion(tail->c.type, sc, ia); 
+                    process_sync_completion(tail, sc, ia); 
                 
                     notify_sync_completion(sc);
 
@@ -2162,13 +2167,8 @@ int zookeeper_process(zhandle_t *zh, int events)
                         *sc = (struct sync_completion*)cptr->data;
                 sc->rc = rc;
                 
-                LOG_DEBUG(("Processing sync_completion with type=%d xid=%#x rc=%d",
-                    cptr->c.type, cptr->xid, sc->rc));
-
-                //Only process the sync completion of there were no errors
-                if (rc == 0) {
-                    process_sync_completion(cptr->c.type, sc, ia); 
-                }
+                process_sync_completion(cptr, sc, ia); 
+                
                 notify_sync_completion(sc);
                 free_buffer(bptr);
                 zh->outstanding_sync--;
