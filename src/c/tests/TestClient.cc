@@ -187,6 +187,10 @@ class Zookeeper_simpleSystem : public CPPUNIT_NS::TestFixture
     CPPUNIT_TEST(testAsyncWatcherAutoReset);
     CPPUNIT_TEST(testDeserializeString);
 #ifdef THREADED
+    CPPUNIT_TEST(testMulti);
+    CPPUNIT_TEST(testAsyncMulti);
+    CPPUNIT_TEST(testMultiFail);
+    CPPUNIT_TEST(testMultiSetData);
     CPPUNIT_TEST(testNullData);
 #ifdef ZOO_IPV6_ENABLED
     CPPUNIT_TEST(testIPV6);
@@ -644,6 +648,146 @@ public:
 
         CPPUNIT_ASSERT(Stat_eq(&stat_a, &stat_b));
         CPPUNIT_ASSERT(stat_a.numChildren == 4);
+    }
+
+    void testMulti() {
+        int rc;
+        watchctx_t ctx;
+        zhandle_t *zk = createClient(&ctx);
+       
+        int sz = 512;
+        char p1[sz], p2[sz], p3[sz];
+
+        p1[0] = '\0';
+        p2[0] = '\0';
+        p3[0] = '\0';
+
+        op_result_t results[3] ;
+        op_t ops[3] = {
+            op_create("/multi", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz),
+            op_create("/multi/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p2, sz),
+            op_create("/multi/b", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p3, sz)
+        };
+        
+        rc = zoo_multi(zk, 3, ops, results);
+        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
+
+
+        CPPUNIT_ASSERT(strcmp(p1, "/multi") == 0);
+        CPPUNIT_ASSERT(strcmp(p2, "/multi/a") == 0);
+        CPPUNIT_ASSERT(strcmp(p3, "/multi/b") == 0);
+
+        CPPUNIT_ASSERT_EQUAL(results[0].err, 0);
+        CPPUNIT_ASSERT_EQUAL(results[1].err, 0);
+        CPPUNIT_ASSERT_EQUAL(results[2].err, 0);
+    }
+
+    void testAsyncMulti() {
+        int rc;
+        watchctx_t ctx;
+        zhandle_t *zk = createClient(&ctx);
+       
+        int sz = 512;
+        char p1[sz], p2[sz], p3[sz];
+
+        p1[0] = '\0';
+        p2[0] = '\0';
+        p3[0] = '\0';
+
+        op_result_t results[3] ;
+        results[0].err = -1;
+        results[1].err = -2;
+        results[2].err = -3;
+
+        op_t ops[3] = {
+            op_create("/multi_async",   "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz),
+            op_create("/multi_async/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p2, sz),
+            op_create("/multi_async/b", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p3, sz)
+        };
+        
+        rc = zoo_amulti(zk, 3, ops, results, multi_completion_fn, 0);
+        waitForMultiCompletion(10);
+        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
+
+        CPPUNIT_ASSERT(strcmp(p1, "/multi_async") == 0);
+        CPPUNIT_ASSERT(strcmp(p2, "/multi_async/a") == 0);
+        CPPUNIT_ASSERT(strcmp(p3, "/multi_async/b") == 0);
+
+        CPPUNIT_ASSERT_EQUAL(results[0].err, 0);
+        CPPUNIT_ASSERT_EQUAL(results[1].err, 0);
+        CPPUNIT_ASSERT_EQUAL(results[2].err, 0);
+    }
+
+    void testMultiFail() {
+        int rc;
+        watchctx_t ctx;
+        zhandle_t *zk = createClient(&ctx);
+       
+        int sz = 512;
+        char p1[sz], p2[sz], p3[sz];
+
+        p1[0] = '\0';
+        p2[0] = '\0';
+        p3[0] = '\0';
+
+        op_result_t results[3] ;
+        op_t ops[3] = {
+            op_create("/multi_fail",   "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz),
+            op_create("/multi_fail",   "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p2, sz),
+            op_create("/multi_fail/b", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p3, sz),
+        };
+        
+        rc = zoo_multi(zk, 3, ops, results);
+        CPPUNIT_ASSERT_EQUAL((int)ZNODEEXISTS, rc);
+    }
+
+    void testMultiSetData() {
+        int rc;
+        watchctx_t ctx;
+        zhandle_t *zk = createClient(&ctx);
+
+        struct Stat stat;
+        char buf[1024] = { '\0' };
+        int blen;
+        struct String_vector strings;
+        const char *testName;
+
+        int sz = 512;
+        char p1[sz], p2[sz];
+
+        p1[0] = '\0';
+        p2[0] = '\0';
+
+        op_t ops[] = {
+            op_create("/multi_setdata",   "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz),
+            op_create("/multi_setdata/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p2, sz)
+        };
+        op_result_t results[sizeof(ops) / sizeof(ops[0])];
+        
+        rc = zoo_multi(zk, sizeof(ops) / sizeof(ops[0]), ops, results);
+        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
+
+        op_t setdata_ops[] = {
+            op_setdata("/multi_setdata", "1", 1, 0),
+            op_setdata("/multi_setdata/a", "2", 1, 0)
+        };
+        op_result_t setdata_results[sizeof(setdata_ops) / sizeof(setdata_ops[0])];
+
+        rc = zoo_multi(zk, sizeof(setdata_ops) / sizeof(setdata_ops[0]), setdata_ops, setdata_results);
+        CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
+        CPPUNIT_ASSERT_EQUAL(results[0].err, 0);
+        CPPUNIT_ASSERT_EQUAL(results[1].err, 0);
+        
+        rc = zoo_get(zk, "/multi_setdata", 0, buf, &blen, NULL);
+        CPPUNIT_ASSERT_EQUAL(blen, 1);
+        CPPUNIT_ASSERT(strcmp(buf, "1") == 0);
+        buf[0] = '\0' ;
+
+        rc = zoo_get(zk, "/multi_setdata/a", 0, buf, &blen, NULL);
+        CPPUNIT_ASSERT_EQUAL(blen, 1);
+        CPPUNIT_ASSERT(strcmp(buf, "2") == 0);
+ 
+    
     }
 
     void testIPV6() {

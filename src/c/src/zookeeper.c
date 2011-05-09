@@ -2991,6 +2991,7 @@ int zoo_amulti(zhandle_t *zh, int count, const op_t *ops,
                 struct SetDataRequest req;
                 rc = rc < 0 ? rc : SetDataRequest_init(zh, &req, op->path, op->data, op->datalen, op->version);
                 rc = rc < 0 ? rc : serialize_SetDataRequest(oa, "req", &req);
+                result->value = op->buf;
 
                 enter_critical(zh);
                 entry = create_completion_entry(h.xid, COMPLETION_STAT, op_result_stat_completion, result, 0, 0); 
