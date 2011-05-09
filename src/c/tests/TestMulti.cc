@@ -136,12 +136,12 @@ public:
         return evt;
     }
 
-    int countEvents() {
-        int count;
+    int multi_countEvents() {
+        int multi_count;
         mutex.acquire();
-        count = events.size();
+        multi_count = events.size();
         mutex.release();
-        return count;
+        return multi_count;
     }
 
     void putEvent(evt_t evt) {
@@ -268,15 +268,15 @@ public:
   
     bool waitForEvent(zhandle_t *zh, watchctx_t *ctx, int seconds) {
         time_t expires = time(0) + seconds;
-        while(ctx->countEvents() == 0 && time(0) < expires) {
+        while(ctx->multi_countEvents() == 0 && time(0) < expires) {
             yield(zh, 1);
         }
-        return ctx->countEvents() > 0;
+        return ctx->multi_countEvents() > 0;
     }
 
 #define COUNT 100
 
-    static volatile int count;
+    static volatile int multi_count;
     static const char* hp_chroot;
 
     static void statCompletion(int rc, const struct Stat *stat, const void *data) {
@@ -286,28 +286,28 @@ public:
 
     static void create_completion_fn(int rc, const char* value, const void *data) {
         CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
-        count++;
+        multi_count++;
     }
 
     static void multi_completion_fn(int rc, const void *data) {
         CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
-        count++;
+        multi_count++;
     }
 
     static void waitForCreateCompletion(int seconds) {
         time_t expires = time(0) + seconds;
-        while(count == 0 && time(0) < expires) {
+        while(multi_count == 0 && time(0) < expires) {
             sleep(1);
         }
-        count--;
+        multi_count--;
     }
 
     static void waitForMultiCompletion(int seconds) {
         time_t expires = time(0) + seconds;
-        while(count == 0 && time(0) < expires) {
+        while(multi_count == 0 && time(0) < expires) {
             sleep(1);
         }
-        count--;
+        multi_count--;
     }
 
     static void watcher_chroot_fn(zhandle_t *zh, int type,
@@ -315,29 +315,29 @@ public:
         // check for path
         char *client_path = (char *) watcherCtx;
         CPPUNIT_ASSERT(strcmp(client_path, path) == 0);
-        count ++;
+        multi_count ++;
     }
 
     static void waitForChrootWatch(int seconds) {
         time_t expires = time(0) + seconds;
-        while (count == 0 && time(0) < expires) {
+        while (multi_count == 0 && time(0) < expires) {
             sleep(1);
         }
-        count--;
+        multi_count--;
     }
 
     static void waitForVoidCompletion(int seconds) {
         time_t expires = time(0) + seconds;
-        while(count == 0 && time(0) < expires) {
+        while(multi_count == 0 && time(0) < expires) {
             sleep(1);
         }
-        count--;
+        multi_count--;
     }
 
     static void voidCompletion(int rc, const void *data) {
         int tmp = (int) (long) data;
         CPPUNIT_ASSERT_EQUAL(tmp, rc);
-        count++;
+        multi_count++;
     }
 
     static void verifyCreateFails(const char *path, zhandle_t *zk) {
@@ -401,12 +401,9 @@ public:
         int rc;
         watchctx_t ctx;
         zhandle_t *zk = createClient(&ctx);
-        int sz = 512;
-        char p1[sz];
-        p1[0] = '\0';
        
         op_t ops[] = {
-            op_create("/multi2", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz),
+            op_create("/multi2", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0),
             op_delete("/multi2", 0)
         };
         int nops = sizeof(ops) / sizeof(ops[0]);
@@ -446,15 +443,12 @@ public:
         int rc;
         watchctx_t ctx;
         zhandle_t *zk = createClient(&ctx);
-        int sz = 512;
-        char p1[sz];
-        p1[0] = '\0';
-
+       
         op_t ops[] = {
             /* Create */
-            op_create("/multi4", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz),
-            op_create("/multi4/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz),
-            op_create("/multi4/a/1", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz),
+            op_create("/multi4", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0),
+            op_create("/multi4/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0),
+            op_create("/multi4/a/1", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0),
             
             /* Delete */
             op_delete("/multi4/a/1", 0),
@@ -485,54 +479,47 @@ public:
         int rc;
         watchctx_t ctx;
         zhandle_t *zk = createClient(&ctx);
-        int sz = 512;
-        struct Stat s1;
 
-        char buf[sz];
-        memset(buf, 0, sz);
+        struct Stat stat;
+        char buf[1024] = { '\0' };
         int blen;
+        struct String_vector strings;
+        const char *testName;
 
+        int sz = 512;
         char p1[sz], p2[sz];
-        memset(p1, 0, sz);
-        memset(p2, 0, sz);
+
+        p1[0] = '\0';
+        p2[0] = '\0';
 
         op_t ops[] = {
             op_create("/multi5",   "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz),
             op_create("/multi5/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p2, sz)
         };
-        int nops = sizeof(ops) / sizeof(ops[0]) ;
-        op_result_t results[nops];
+        op_result_t results[sizeof(ops) / sizeof(ops[0])];
         
-        rc = zoo_multi(zk, nops, ops, results);
+        rc = zoo_multi(zk, sizeof(ops) / sizeof(ops[0]), ops, results);
         CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
 
         op_t setdata_ops[] = {
-            op_setdata("/multi5",   "1", 1, 0),
+            op_setdata("/multi5", "1", 1, 0),
             op_setdata("/multi5/a", "2", 1, 0)
         };
+        op_result_t setdata_results[sizeof(setdata_ops) / sizeof(setdata_ops[0])];
 
-        int nsops = sizeof(setdata_ops) / sizeof(setdata_ops[0]);;
-        op_result_t setdata_results[nsops];
-
-        rc = zoo_multi(zk, nsops, setdata_ops, setdata_results);
+        rc = zoo_multi(zk, sizeof(setdata_ops) / sizeof(setdata_ops[0]), setdata_ops, setdata_results);
         CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
         CPPUNIT_ASSERT_EQUAL(results[0].err, 0);
         CPPUNIT_ASSERT_EQUAL(results[1].err, 0);
-#if 0
-        memset(buf, 0, sizeof(buf));
-        rc = zoo_get(zk, "/multi5", 0, buf, &blen, &s1);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-        yield(zk, 2);
+        
+        rc = zoo_get(zk, "/multi5", 0, buf, &blen, NULL);
         CPPUNIT_ASSERT_EQUAL(blen, 1);
         CPPUNIT_ASSERT(strcmp(buf, "1") == 0);
-        
-        memset(buf, 0, sizeof(buf));
-        rc = zoo_get(zk, "/multi5/a", 0, buf, &blen, &s1);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-        yield(zk, 2);
+        buf[0] = '\0' ;
+
+        rc = zoo_get(zk, "/multi5/a", 0, buf, &blen, NULL);
         CPPUNIT_ASSERT_EQUAL(blen, 1);
         CPPUNIT_ASSERT(strcmp(buf, "2") == 0);
-#endif
     }
 
     /**
@@ -542,15 +529,11 @@ public:
         int rc;
         watchctx_t ctx;
         zhandle_t *zk = createClient(&ctx);
-        int sz = 512;
-        char buf[sz];
-        int blen;
-        char p1[sz];
-        p1[0] = '\0';
-        struct Stat s1;
+        char buf[1024] = { '\0' };
+        int blen ;
 
         op_t ops[] = {
-            op_create("/multi6", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz),
+            op_create("/multi6", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0),
             op_setdata("/multi6", "X", 1, 0),
             op_setdata("/multi6", "Y", 1, 0)
         };
@@ -562,17 +545,13 @@ public:
 
         //Updating version solves conflict -- order matters
         ops[2].version = 1;
+
         rc = zoo_multi(zk, nops, ops, results);
         CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-#if 0        
-        memset(buf, 0, sz);
-        rc = zoo_get(zk, "/multi6", 0, buf, &blen, &s1);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-        yield(zk, 2);
-        CPPUNIT_ASSERT_EQUAL(blen, 1);
-        CPPUNIT_ASSERT(strcmp(buf, "Y") == 0);
-#endif
 
+        rc = zoo_get(zk, "/multi6", 0, buf, &blen, NULL);
+        CPPUNIT_ASSERT(strcmp(buf, "Y") == 0);
+        buf[0] = '\0';
     }
 
     /**
@@ -582,14 +561,9 @@ public:
         int rc;
         watchctx_t ctx;
         zhandle_t *zk = createClient(&ctx);
-        int sz = 512;
-        char buf[sz];
-        int blen;
-        char p1[sz];
-        p1[0] = '\0';
 
         op_t ops[] = {
-            op_create("/multi7", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz),
+            op_create("/multi7", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0),
             op_delete("/multi7", 0),
             op_setdata("/multi7", "Y", 1, 0)
         };
@@ -611,19 +585,23 @@ public:
        
         int sz = 512;
         char p1[sz], p2[sz], p3[sz];
+
         p1[0] = '\0';
         p2[0] = '\0';
         p3[0] = '\0';
+
+        op_result_t results[3] ;
+        results[0].err = -1;
+        results[1].err = -2;
+        results[2].err = -3;
 
         op_t ops[3] = {
             op_create("/multi8",   "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz),
             op_create("/multi8/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p2, sz),
             op_create("/multi8/b", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p3, sz)
         };
-        int nops = sizeof(ops) / sizeof(ops[0]);
-        op_result_t results[nops];
- 
-        rc = zoo_amulti(zk, nops, ops, results, multi_completion_fn, 0);
+        
+        rc = zoo_amulti(zk, 3, ops, results, multi_completion_fn, 0);
         waitForMultiCompletion(10);
         CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
 
@@ -660,6 +638,6 @@ public:
     }
 };
 
-volatile int Zookeeper_multi::count;
+volatile int Zookeeper_multi::multi_count;
 const char Zookeeper_multi::hostPorts_multi[] = "127.0.0.1:22181";
 CPPUNIT_TEST_SUITE_REGISTRATION(Zookeeper_multi);
