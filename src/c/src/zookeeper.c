@@ -2915,8 +2915,11 @@ static void op_result_string_completion(int err, const char *value, const void *
     struct op_result *result = (struct op_result *)data;
     assert(result);
     result->err = err;
+    
     if (value) {
-        strcpy(result->value, (char *)value);
+        int len = strlen(value) + 1;
+        memcpy(result->value, value, len - 1);
+        result->value[len - 1] = '\0';
     } else {
         result->value = NULL;
     }
