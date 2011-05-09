@@ -24,6 +24,7 @@
 #include <sys/time.h>
 #include <stdio.h>
 #include <ctype.h>
+#include <proto.h>
 
 #include "zookeeper_version.h"
 #include "recordio.h"
@@ -257,61 +258,91 @@ typedef struct {
 } clientid_t;
 
 /**
- * \brief create_op structure.
- *
- * This structure holds the arguments necessary to do a create operation as part
- * of a containing multi_op via \ref zoo_multi or \ref zoo_amulti.
- */
-typedef struct create_op {
-    const char *path;
-    const char *data;
-    int datalen;       
-    const struct ACL_vector *acl;
-    int flags;
-    char *path_buf;
-    int path_buf_len;
-} create_op_t;
-
-/**
- * \brief delete_op structure.
- *
- * This structure holds the arguments necessary to do a delete operation as part
- * of a containing multi_op via \ref zoo_multi or \ref zoo_amulti.
- */
-typedef struct delete_op {
-    const char *path;
-    int version;
-} delete_op_t;
-
-/**
- * \brief setdata_op structure.
- *
- * This structure holds the arguments necessary to do a setdata operation as part
- * of a containing multi_op via \ref zoo_multi or \ref zoo_amulti.
- */
-typedef struct setdata_op {
-    const char *path;
-    const char *data;
-    int datalen;
-    char *path_buf;
-    int path_buf_len;
-    int version;
-} setdata_op_t; 
-
-/**
  * \brief op structure.
  *
  * This structure holds all the arguments necessary for one op as part
  * of a containing multi_op via \ref zoo_multi or \ref zoo_amulti.
+ * Note that it contains all the arguments necessary for any op regardless
+ * of type. The structures should be initialized via the helper macros
+ * \ref op_create, \ref op_delete and \ref op_setdata.
  */
 typedef struct op {
     int type;
-    union {
-        create_op_t create_op;
-        delete_op_t delete_op;
-        setdata_op_t setdata_op;
-    };
+    const char *path;
+    const char *data;
+    int datalen;
+    char *buf;
+    int buflen;
+    
+    //CREATE
+    const struct ACL_vector *acl;
+    int flags;
+
+    //DELETE / SETDATA
+    int version;
 } op_t;
+
+/**
+ * \brief op_create macro.
+ *
+ * This macro is used to initialize an op_t with the arguments for 
+ * a CREATE_OP.
+ *
+ * \param path The name of the node. Expressed as a file name with slashes 
+ * separating ancestors of the node.
+ * \param value The data to be stored in the node.
+ * \param valuelen The number of bytes in data. To set the data to be NULL use
+ * value as NULL and valuelen as -1.
+ * \param acl The initial ACL of the node. The ACL must not be null or empty.
+ * \param flags this parameter can be set to 0 for normal create or an OR
+ *    of the Create Flags
+ * \param path_buffer Buffer which will be filled with the path of the
+ *    new node (this might be different than the supplied path
+ *    because of the ZOO_SEQUENCE flag).  The path string will always be
+ *    null-terminated. This parameter may be NULL if path_buffer_len = 0.
+ * \param path_buffer_len Size of path buffer; if the path of the new
+ *    node (including space for the null terminator) exceeds the buffer size,
+ *    the path string will be truncated to fit.  The actual path of the
+ *    new node in the server will not be affected by the truncation.
+ *    The path string will always be null-terminated.
+ *
+ */
+#define op_create(_path, _value, _valuelen, _acl, _flags, _path_buffer, _path_buffer_len) \
+    { CREATE_OP, _path, _value, _valuelen, _path_buffer, _path_buffer_len, _acl, _flags, -1 }
+
+/**
+ * \brief op_delete macro.
+ *
+ * This macro is used to initialize an op_t with the arguments for 
+ * a DELETE_OP.
+ *
+ * \param path the name of the node. Expressed as a file name with slashes 
+ * separating ancestors of the node.
+ * \param version the expected version of the node. The function will fail if the
+ *    actual version of the node does not match the expected version.
+ *  If -1 is used the version check will not take place. 
+ */
+#define op_delete(_path, _version) \
+    { DELETE_OP, _path, NULL, 0, NULL, 0, NULL, 0, _version }
+
+/**
+ * \brief op_setdata macro.
+ *
+ * This macro is used to initialize an op_t with the arguments for 
+ * a SETDATA_OP.
+ *
+ * \param path the name of the node. Expressed as a file name with slashes 
+ * separating ancestors of the node.
+ * \param buffer the buffer holding data to be written to the node.
+ * \param buflen the number of bytes from buffer to write. To set NULL as data 
+ * use buffer as NULL and buflen as -1.
+ * \param version the expected version of the node. The function will fail if 
+ * the actual version of the node does not match the expected version. If -1 is 
+ * used the version check will not take place. 
+ *
+ */
+#define op_setdata(_path, _buffer, _buflen, _version) \
+    { SETDATA_OP, _path, _buffer, _buflen, NULL, 0, NULL, 0, _version }
 
 /**
  * \brief opresult structure.
@@ -319,11 +350,10 @@ typedef struct op {
  * This structure holds the result for an op submitted as part of a multi_op
  * via \ref zoo_multi or \ref zoo_amulti.
  */
-typedef struct opresult {
+typedef struct op_result {
     int err;
-    char *path;
-    struct Stat *stat;
-} opresult_t; 
+    char *value;
+} op_result_t; 
 
 /**
  * \brief signature of a watch function.
@@ -1062,7 +1092,7 @@ ZOOAPI int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
  * \ref zoo_acreate, \ref zoo_adelete, \ref zoo_aset).
  */
 ZOOAPI int zoo_amulti(zhandle_t *zh, int count, const op_t *ops, 
-        opresult_t *results, void_completion_t, const void *data);
+        op_result_t *results, void_completion_t, const void *data);
 
 /**
  * \brief return an error string.
@@ -1505,7 +1535,7 @@ ZOOAPI int zoo_set_acl(zhandle_t *zh, const char *path, int version,
  * values that can be returned by the ops supported by a multi op (see
  * \ref zoo_acreate, \ref zoo_adelete, \ref zoo_aset).
  */ 
-ZOOAPI int zoo_multi(zhandle_t *zh, int count, const op_t *ops, opresult_t *results);
+ZOOAPI int zoo_multi(zhandle_t *zh, int count, const op_t *ops, op_result_t *results);
 
 #ifdef __cplusplus
 }

@@ -2910,38 +2910,36 @@ int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
 }
 
 /* Completions for multi-op results */
-static void opresult_string_completion(int err, const char *value, const void *data)
+static void op_result_string_completion(int err, const char *value, const void *data)
 {
-    struct opresult *result = (struct opresult *)data;
+    struct op_result *result = (struct op_result *)data;
     assert(result);
     result->err = err;
     if (value) {
-        strcpy(result->path, (char *)value);
+        strcpy(result->value, (char *)value);
     } else {
-        result->path = NULL;
+        result->value = NULL;
     }
 }
 
-static void opresult_void_completion(int err, const void *data)
+static void op_result_void_completion(int err, const void *data)
 {
-    struct opresult *result = (struct opresult *)data;
+    struct op_result *result = (struct op_result *)data;
     result->err = err;
 }
 
-static void opresult_stat_completion(int err, const struct Stat *stat, const void *data)
+static void op_result_stat_completion(int err, const struct Stat *stat, const void *data)
 {
-    struct opresult *result = (struct opresult *)data;
+    struct op_result *result = (struct op_result *)data;
     result->err = err;
-    *result->stat = *stat;
 }   
 
-static void opresult_multi_completion(int err, const void *data)
+static void op_result_multi_completion(int err, const void *data)
 {
-    //printf("%s: called: err=%d\n", __func__, err);
 }
 
 int zoo_amulti(zhandle_t *zh, int count, const op_t *ops,
-        opresult_t *results, void_completion_t completion, const void *data)
+        op_result_t *results, void_completion_t completion, const void *data)
 {
     struct RequestHeader h = { .xid = get_xid(), .type = MULTI_OP };
     struct oarchive *oa = create_buffer_oarchive();
@@ -2953,7 +2951,7 @@ int zoo_amulti(zhandle_t *zh, int count, const op_t *ops,
 
     for (index=0; index < count; index++) {
         const op_t *op = ops+index;
-        opresult_t *result = results+index;
+        op_result_t *result = results+index;
         completion_list_t *entry = NULL;
 
         struct MultiHeader mh = { .type=op->type, .done=0, .err=-1 };
@@ -2962,44 +2960,40 @@ int zoo_amulti(zhandle_t *zh, int count, const op_t *ops,
         switch(op->type) {
             case CREATE_OP: {
                 struct CreateRequest req;
-                create_op_t cop = op->create_op;
 
-                rc = rc < 0 ? rc : CreateRequest_init(zh, &req, cop.path, cop.data, cop.datalen, cop.acl, cop.flags);
+                rc = rc < 0 ? rc : CreateRequest_init(zh, &req, op->path, op->data, op->datalen, op->acl, op->flags);
                 rc = rc < 0 ? rc : serialize_CreateRequest(oa, "req", &req);
-                result->path = cop.path_buf;
+                result->value = op->buf;
 
                 enter_critical(zh);
-                entry = create_completion_entry(h.xid, COMPLETION_STRING, opresult_string_completion, result, 0, 0); 
+                entry = create_completion_entry(h.xid, COMPLETION_STRING, op_result_string_completion, result, 0, 0); 
                 leave_critical(zh);
-                free_duplicate_path(req.path, cop.path);
+                free_duplicate_path(req.path, op->path);
                 break;
             }
 
             case DELETE_OP: {
                 struct DeleteRequest req;
-                delete_op_t dop = op->delete_op;
-                rc = rc < 0 ? rc : DeleteRequest_init(zh, &req, dop.path, dop.version);
+                rc = rc < 0 ? rc : DeleteRequest_init(zh, &req, op->path, op->version);
                 rc = rc < 0 ? rc : serialize_DeleteRequest(oa, "req", &req);
 
                 enter_critical(zh);
-                entry = create_completion_entry(h.xid, COMPLETION_VOID, opresult_void_completion, result, 0, 0); 
+                entry = create_completion_entry(h.xid, COMPLETION_VOID, op_result_void_completion, result, 0, 0); 
                 leave_critical(zh);
-                free_duplicate_path(req.path, dop.path);
+                free_duplicate_path(req.path, op->path);
                 break;
             }
 
             case SETDATA_OP: {
                 struct SetDataRequest req;
-                setdata_op_t sop = op->setdata_op;
-                rc = rc < 0 ? rc : SetDataRequest_init(zh, &req, sop.path, sop.data, sop.datalen, sop.version);
+                rc = rc < 0 ? rc : SetDataRequest_init(zh, &req, op->path, op->data, op->datalen, op->version);
                 rc = rc < 0 ? rc : serialize_SetDataRequest(oa, "req", &req);
-                result->path = sop.path_buf;
-                //FIXME: result.stat = op.setdata.;
+                result->value = op->buf;
 
                 enter_critical(zh);
-                entry = create_completion_entry(h.xid, COMPLETION_STAT, opresult_stat_completion, result, 0, 0); 
+                entry = create_completion_entry(h.xid, COMPLETION_STAT, op_result_stat_completion, result, 0, 0); 
                 leave_critical(zh);
-                free_duplicate_path(req.path, sop.path);
+                free_duplicate_path(req.path, op->path);
                 break;
             }
 
@@ -3022,7 +3016,7 @@ int zoo_amulti(zhandle_t *zh, int count, const op_t *ops,
   
     /* BEGIN: CRTICIAL SECTION */
     enter_critical(zh);
-    rc = rc < 0 ? rc : add_multi_completion(zh, h.xid, opresult_multi_completion, NULL, &clist);
+    rc = rc < 0 ? rc : add_multi_completion(zh, h.xid, op_result_multi_completion, NULL, &clist);
     rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, get_buffer(oa),
             get_buffer_len(oa));
     leave_critical(zh);
@@ -3038,7 +3032,7 @@ int zoo_amulti(zhandle_t *zh, int count, const op_t *ops,
     return (rc < 0) ? ZMARSHALLINGERROR : ZOK;
 }
 
-int zoo_multi(zhandle_t *zh, int count, const op_t *ops, opresult_t *results)
+int zoo_multi(zhandle_t *zh, int count, const op_t *ops, op_result_t *results)
 {
     int rc;
  

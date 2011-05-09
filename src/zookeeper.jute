@@ -66,12 +66,6 @@ module org.apache.zookeeper.data {
 }
 
 module org.apache.zookeeper.proto {
-    class op_result_t {
-        int rc;
-        int op;
-        buffer response;
-    }
-
     class ConnectRequest {
         int protocolVersion;
         long lastZxidSeen;
