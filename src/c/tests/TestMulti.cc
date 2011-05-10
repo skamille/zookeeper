@@ -489,12 +489,9 @@ public:
         struct Stat s1;
 
         char buf[sz];
-        memset(buf, 0, sz);
-        int blen;
+        int blen = sz ;
 
         char p1[sz], p2[sz];
-        memset(p1, 0, sz);
-        memset(p2, 0, sz);
 
         op_t ops[] = {
             op_create("/multi5",   "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz),
@@ -502,13 +499,15 @@ public:
         };
         int nops = sizeof(ops) / sizeof(ops[0]) ;
         op_result_t results[nops];
-        
+       
         rc = zoo_multi(zk, nops, ops, results);
         CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
+        
+        yield(zk, 5);
 
         op_t setdata_ops[] = {
-            op_setdata("/multi5",   "1", 1, 0),
-            op_setdata("/multi5/a", "2", 1, 0)
+            op_setdata("/multi5",   "1", 1, 0, &s1),
+            op_setdata("/multi5/a", "2", 1, 0, &s1)
         };
 
         int nsops = sizeof(setdata_ops) / sizeof(setdata_ops[0]);;
@@ -518,21 +517,18 @@ public:
         CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
         CPPUNIT_ASSERT_EQUAL(results[0].err, 0);
         CPPUNIT_ASSERT_EQUAL(results[1].err, 0);
-#if 0
-        memset(buf, 0, sizeof(buf));
+        
+        memset(buf, '\0', blen);
         rc = zoo_get(zk, "/multi5", 0, buf, &blen, &s1);
         CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-        yield(zk, 2);
-        CPPUNIT_ASSERT_EQUAL(blen, 1);
-        CPPUNIT_ASSERT(strcmp(buf, "1") == 0);
+        CPPUNIT_ASSERT_EQUAL(1, blen);
+        CPPUNIT_ASSERT(strcmp("1", buf) == 0);
         
-        memset(buf, 0, sizeof(buf));
+        memset(buf, '\0', blen);
         rc = zoo_get(zk, "/multi5/a", 0, buf, &blen, &s1);
         CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-        yield(zk, 2);
-        CPPUNIT_ASSERT_EQUAL(blen, 1);
-        CPPUNIT_ASSERT(strcmp(buf, "2") == 0);
-#endif
+        CPPUNIT_ASSERT_EQUAL(1, blen);
+        CPPUNIT_ASSERT(strcmp("2", buf) == 0);
     }
 
     /**
@@ -544,15 +540,15 @@ public:
         zhandle_t *zk = createClient(&ctx);
         int sz = 512;
         char buf[sz];
-        int blen;
+        int blen = sz;
         char p1[sz];
         p1[0] = '\0';
         struct Stat s1;
 
         op_t ops[] = {
             op_create("/multi6", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz),
-            op_setdata("/multi6", "X", 1, 0),
-            op_setdata("/multi6", "Y", 1, 0)
+            op_setdata("/multi6", "X", 1, 0, &s1),
+            op_setdata("/multi6", "Y", 1, 0, &s1)
         };
         int nops = sizeof(ops) / sizeof(ops[0]);
         op_result_t results[nops];
@@ -564,15 +560,12 @@ public:
         ops[2].version = 1;
         rc = zoo_multi(zk, nops, ops, results);
         CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-#if 0        
+       
         memset(buf, 0, sz);
         rc = zoo_get(zk, "/multi6", 0, buf, &blen, &s1);
         CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-        yield(zk, 2);
         CPPUNIT_ASSERT_EQUAL(blen, 1);
-        CPPUNIT_ASSERT(strcmp(buf, "Y") == 0);
-#endif
-
+        CPPUNIT_ASSERT(strncmp(buf, "Y", 1) == 0);
     }
 
     /**
@@ -587,11 +580,12 @@ public:
         int blen;
         char p1[sz];
         p1[0] = '\0';
+        struct Stat stat;
 
         op_t ops[] = {
             op_create("/multi7", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz),
             op_delete("/multi7", 0),
-            op_setdata("/multi7", "Y", 1, 0)
+            op_setdata("/multi7", "Y", 1, 0, &stat)
         };
         int nops = sizeof(ops) / sizeof(ops[0]);
         op_result_t results[nops];

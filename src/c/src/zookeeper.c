@@ -2003,10 +2003,7 @@ void process_completions(zhandle_t *zh)
                     sc->rc = multi_err;
                 
                     process_sync_completion(tail, sc, ia); 
-                
                     notify_sync_completion(sc);
-                    zh->outstanding_sync--;
-                    destroy_completion_entry(tail);
                 } else {
                     LOG_DEBUG(("Queueing asynchronous response"));
 
@@ -2935,6 +2932,12 @@ static void op_result_stat_completion(int err, const struct Stat *stat, const vo
 {
     struct op_result *result = (struct op_result *)data;
     result->err = err;
+
+    if (err == 0 && stat) {
+        *result->stat = *stat;
+    } else {
+        result->stat = NULL ;
+    }
 }   
 
 static void op_result_multi_completion(int err, const void *data)
@@ -2991,6 +2994,7 @@ int zoo_amulti(zhandle_t *zh, int count, const op_t *ops,
                 struct SetDataRequest req;
                 rc = rc < 0 ? rc : SetDataRequest_init(zh, &req, op->path, op->data, op->datalen, op->version);
                 rc = rc < 0 ? rc : serialize_SetDataRequest(oa, "req", &req);
+                result->stat = op->stat;
 
                 enter_critical(zh);
                 entry = create_completion_entry(h.xid, COMPLETION_STAT, op_result_stat_completion, result, 0, 0); 

@@ -280,6 +280,9 @@ typedef struct op {
 
     //DELETE / SETDATA
     int version;
+
+    //SETDATA
+    struct Stat *stat; 
 } op_t;
 
 /**
@@ -308,7 +311,7 @@ typedef struct op {
  *
  */
 #define op_create(_path, _value, _valuelen, _acl, _flags, _path_buffer, _path_buffer_len) \
-    { CREATE_OP, _path, _value, _valuelen, _path_buffer, _path_buffer_len, _acl, _flags, -1 }
+    { CREATE_OP, _path, _value, _valuelen, _path_buffer, _path_buffer_len, _acl, _flags, -1, NULL }
 
 /**
  * \brief op_delete macro.
@@ -323,7 +326,7 @@ typedef struct op {
  *  If -1 is used the version check will not take place. 
  */
 #define op_delete(_path, _version) \
-    { DELETE_OP, _path, NULL, 0, NULL, 0, NULL, 0, _version }
+    { DELETE_OP, _path, NULL, 0, NULL, 0, NULL, 0, _version, NULL }
 
 /**
  * \brief op_setdata macro.
@@ -341,8 +344,8 @@ typedef struct op {
  * used the version check will not take place. 
  *
  */
-#define op_setdata(_path, _buffer, _buflen, _version) \
-    { SETDATA_OP, _path, _buffer, _buflen, NULL, 0, NULL, 0, _version }
+#define op_setdata(_path, _buffer, _buflen, _version, _stat) \
+    { SETDATA_OP, _path, _buffer, _buflen, NULL, 0, NULL, 0, _version, _stat }
 
 /**
  * \brief opresult structure.
@@ -353,6 +356,7 @@ typedef struct op {
 typedef struct op_result {
     int err;
     char *value;
+    struct Stat *stat;
 } op_result_t; 
 
 /**
