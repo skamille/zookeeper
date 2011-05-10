@@ -169,6 +169,8 @@ public:
 class Zookeeper_multi : public CPPUNIT_NS::TestFixture
 {
     CPPUNIT_TEST_SUITE(Zookeeper_multi);
+//FIXME: None of these tests pass in single-threaded mode. It seems to be a
+//flaw in the test suite setup.
 #ifdef THREADED
     CPPUNIT_TEST(testCreate);
     CPPUNIT_TEST(testCreateDelete);
