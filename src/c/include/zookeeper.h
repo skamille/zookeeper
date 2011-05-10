@@ -24,8 +24,8 @@
 #include <sys/time.h>
 #include <stdio.h>
 #include <ctype.h>
-#include <proto.h>
 
+#include "proto.h"
 #include "zookeeper_version.h"
 #include "recordio.h"
 #include "zookeeper.jute.h"
