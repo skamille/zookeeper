@@ -67,16 +67,16 @@ public class MultiTransactionRecord implements Record, Iterable<Op> {
             MultiHeader h = new MultiHeader(op.getType(), false, -1);
             h.serialize(archive, tag);
             switch (op.getType()) {
-                case ZooDefs.OpCode.check:
-                    op.toRequestRecord().serialize(archive, tag);
-                    break;
-                case ZooDefs.OpCode.create:
+               case ZooDefs.OpCode.create:
                     op.toRequestRecord().serialize(archive, tag);
                     break;
                 case ZooDefs.OpCode.delete:
                     op.toRequestRecord().serialize(archive, tag);
                     break;
                 case ZooDefs.OpCode.setData:
+                    op.toRequestRecord().serialize(archive, tag);
+                    break;
+                case ZooDefs.OpCode.check:
                     op.toRequestRecord().serialize(archive, tag);
                     break;
                 default:
@@ -95,12 +95,7 @@ public class MultiTransactionRecord implements Record, Iterable<Op> {
 
         while (!h.getDone()) {
             switch (h.getType()) {
-                case ZooDefs.OpCode.check:
-                    CheckVersionRequest cvr = new CheckVersionRequest();
-                    cvr.deserialize(archive, tag);
-                    add(Op.check(cvr.getPath(), cvr.getVersion()));
-                    break;
-                case ZooDefs.OpCode.create:
+               case ZooDefs.OpCode.create:
                     CreateRequest cr = new CreateRequest();
                     cr.deserialize(archive, tag);
                     add(Op.create(cr.getPath(), cr.getData(), cr.getAcl(), cr.getFlags()));
@@ -114,6 +109,11 @@ public class MultiTransactionRecord implements Record, Iterable<Op> {
                     SetDataRequest sdr = new SetDataRequest();
                     sdr.deserialize(archive, tag);
                     add(Op.setData(sdr.getPath(), sdr.getData(), sdr.getVersion()));
+                    break;
+                case ZooDefs.OpCode.check:
+                    CheckVersionRequest cvr = new CheckVersionRequest();
+                    cvr.deserialize(archive, tag);
+                    add(Op.check(cvr.getPath(), cvr.getVersion()));
                     break;
                 default:
                     throw new IOException("Invalid type of op");

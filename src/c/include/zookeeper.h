@@ -313,6 +313,9 @@ typedef struct op {
 #define op_create(_path, _value, _valuelen, _acl, _flags, _path_buffer, _path_buffer_len) \
     { CREATE_OP, _path, _value, _valuelen, _path_buffer, _path_buffer_len, _acl, _flags, -1, NULL }
 
+#define op_check(_path, _version, _stat) \
+    { CHECK_OP, _path, NULL, 0, NULL, 0, NULL, 0, _version, _stat }
+
 /**
  * \brief op_delete macro.
  *
@@ -1079,6 +1082,9 @@ ZOOAPI int zoo_aget_acl(zhandle_t *zh, const char *path, acl_completion_t comple
 ZOOAPI int zoo_aset_acl(zhandle_t *zh, const char *path, int version, 
         struct ACL_vector *acl, void_completion_t, const void *data);
 
+ZOOAPI int zoo_acheck(zhandle_t *zh, const char *path, int version,
+        stat_completion_t completion, const void *data);
+
 /**
  * \brief atomically commits multiple zookeeper operations.
  *
@@ -1527,6 +1533,8 @@ ZOOAPI int zoo_get_acl(zhandle_t *zh, const char *path, struct ACL_vector *acl,
  */
 ZOOAPI int zoo_set_acl(zhandle_t *zh, const char *path, int version,
                            const struct ACL_vector *acl);
+
+ZOOAPI int zoo_check(zhandle_t *zh, const char *path, int version, struct Stat *stat);
 
 /**
  * \brief atomically commits multiple zookeeper operations synchronously.

@@ -239,6 +239,10 @@ module org.apache.zookeeper.txn {
         buffer data;
         int version;
     }
+    class CheckVersionTxn {
+        ustring path;
+        int version;
+    }
     class SetACLTxn {
         ustring path;
         vector<org.apache.zookeeper.data.ACL> acl;

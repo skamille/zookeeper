@@ -2933,7 +2933,7 @@ static void op_result_stat_completion(int err, const struct Stat *stat, const vo
     struct op_result *result = (struct op_result *)data;
     result->err = err;
 
-    if (err == 0 && stat) {
+    if (result->stat && err == 0 && stat) {
         *result->stat = *stat;
     } else {
         result->stat = NULL ;
@@ -2942,6 +2942,49 @@ static void op_result_stat_completion(int err, const struct Stat *stat, const vo
 
 static void op_result_multi_completion(int err, const void *data)
 {
+}
+
+static int CheckVersionRequest_init(zhandle_t *zh, struct CheckVersionRequest *req,
+        const char *path, int version)
+{
+    assert(req);
+    int rc = Request_path_init(zh, 0, &req->path, path);
+    if (rc != ZOK) {
+        return rc;
+    }
+    req->version = version;
+
+    return ZOK;
+}
+
+
+int zoo_acheck(zhandle_t *zh, const char *path, int version,
+        stat_completion_t completion, const void *data)
+{
+    struct oarchive *oa;
+    struct RequestHeader h = { .xid = get_xid(), .type = CHECK_OP };
+    struct CheckVersionRequest req;
+    int rc = CheckVersionRequest_init(zh, &req, path, version);
+    if (rc != ZOK) {
+        return rc;
+    }
+    oa = create_buffer_oarchive();
+    rc = serialize_RequestHeader(oa, "header", &h);
+    rc = rc < 0 ? rc : serialize_CheckVersionRequest(oa, "req", &req);
+    enter_critical(zh);
+    rc = rc < 0 ? rc : add_stat_completion(zh, h.xid, completion, data, 0);
+    rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, get_buffer(oa),
+            get_buffer_len(oa));
+    leave_critical(zh);
+    free_duplicate_path(req.path, path);
+    /* We queued the buffer, so don't free it */
+    close_buffer_oarchive(&oa, 0);
+
+    LOG_DEBUG(("Sending request xid=%#x for path [%s] to %s",h.xid,path,
+            format_current_endpoint_info(zh)));
+    /* make a best (non-blocking) effort to send the requests asap */
+    adaptor_send_queue(zh, 0);
+    return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
 
 int zoo_amulti(zhandle_t *zh, int count, const op_t *ops,
@@ -3003,7 +3046,18 @@ int zoo_amulti(zhandle_t *zh, int count, const op_t *ops,
                 break;
             }
 
-            //FIXME: check op
+            case CHECK_OP: {
+                struct CheckVersionRequest req;
+                rc = rc < 0 ? rc : CheckVersionRequest_init(zh, &req, op->path, op->version);
+                rc = rc < 0 ? rc : serialize_CheckVersionRequest(oa, "req", &req);
+                result->stat = op->stat;
+
+                enter_critical(zh);
+                entry = create_completion_entry(h.xid, COMPLETION_STAT, op_result_stat_completion, result, 0, 0); 
+                leave_critical(zh);
+                free_duplicate_path(req.path, op->path);
+                break;
+            } 
 
             default:
                 LOG_ERROR(("Unimplemented sub-op type=%d in multi-op", op->type));
@@ -3036,6 +3090,28 @@ int zoo_amulti(zhandle_t *zh, int count, const op_t *ops,
     adaptor_send_queue(zh, 0);
 
     return (rc < 0) ? ZMARSHALLINGERROR : ZOK;
+}
+
+int zoo_check(zhandle_t *zh, const char *path, int version, struct Stat *stat)
+{
+    int rc;
+ 
+    struct sync_completion *sc = alloc_sync_completion();
+    if (!sc) {
+        return ZSYSTEMERROR;
+    }
+   
+    rc = zoo_acheck(zh, path, version, SYNCHRONOUS_MARKER, sc);
+    if (rc == ZOK) {
+        wait_sync_completion(sc);
+        rc = sc->rc;
+        if (rc == 0 && stat) {
+            *stat = sc->u.stat;
+        }
+    }
+    free_sync_completion(sc);
+
+    return rc;
 }
 
 int zoo_multi(zhandle_t *zh, int count, const op_t *ops, op_result_t *results)

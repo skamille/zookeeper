@@ -181,6 +181,7 @@ class Zookeeper_multi : public CPPUNIT_NS::TestFixture
     CPPUNIT_TEST(testDeleteUpdateConflict);
     CPPUNIT_TEST(testAsyncMulti);
     CPPUNIT_TEST(testMultiFail);
+    CPPUNIT_TEST(testCheck);
 #endif
     CPPUNIT_TEST_SUITE_END();
 
@@ -654,6 +655,56 @@ public:
         rc = zoo_multi(zk, 3, ops, results);
         CPPUNIT_ASSERT_EQUAL((int)ZNODEEXISTS, rc);
     }
+    
+    /**
+     * Test basic multi-op check functionality 
+     */
+    void testCheck() {
+        int rc;
+        watchctx_t ctx;
+        zhandle_t *zk = createClient(&ctx);
+        int sz = 512;
+        char p1[sz];
+        p1[0] = '\0';
+        
+        rc = zoo_create(zk, "/multi0", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz);
+        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
+
+        // Conditionally create /multi0/a' only if '/multi0' at version 0
+        op_t ops[] = {
+            op_check("/multi0", 0, 0),
+            op_create("/multi0/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz)
+        };
+        int nops = sizeof(ops) / sizeof(ops[0]);
+        op_result_t results[nops];
+        
+        rc = zoo_multi(zk, nops, ops, results);
+        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
+
+        CPPUNIT_ASSERT_EQUAL(0, results[0].err);
+        CPPUNIT_ASSERT_EQUAL(0, results[1].err);
+
+        // '/multi0/a' should have been created as it passed version check
+        rc = zoo_exists(zk, "/multi0/a", 0, NULL);
+        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
+ 
+        // Only create '/multi0/b' if '/multi0' at version 10 (which it's not)
+        op_t ops2[] = {
+            op_check("/multi0", 10, 0),
+            op_create("/multi0/b", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz)
+        };
+        
+        rc = zoo_multi(zk, nops, ops2, results);
+        CPPUNIT_ASSERT_EQUAL((int)ZBADVERSION, rc);
+
+        CPPUNIT_ASSERT_EQUAL((int)ZBADVERSION, results[0].err);
+        CPPUNIT_ASSERT_EQUAL((int)ZRUNTIMEINCONSISTENCY, results[1].err);
+
+        // '/multi0/b' should NOT have been created
+        rc = zoo_exists(zk, "/multi0/b", 0, NULL);
+        CPPUNIT_ASSERT_EQUAL((int)ZNONODE, rc);
+    }
+
 };
 
 volatile int Zookeeper_multi::count;

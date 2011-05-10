@@ -48,6 +48,7 @@ import org.apache.zookeeper.proto.CreateRequest;
 import org.apache.zookeeper.proto.DeleteRequest;
 import org.apache.zookeeper.proto.SetACLRequest;
 import org.apache.zookeeper.proto.SetDataRequest;
+import org.apache.zookeeper.proto.CheckVersionRequest;
 import org.apache.zookeeper.server.ZooKeeperServer.ChangeRecord;
 import org.apache.zookeeper.server.auth.AuthenticationProvider;
 import org.apache.zookeeper.server.auth.ProviderRegistry;
@@ -57,6 +58,7 @@ import org.apache.zookeeper.txn.DeleteTxn;
 import org.apache.zookeeper.txn.ErrorTxn;
 import org.apache.zookeeper.txn.SetACLTxn;
 import org.apache.zookeeper.txn.SetDataTxn;
+import org.apache.zookeeper.txn.CheckVersionTxn;
 import org.apache.zookeeper.txn.Txn;
 import org.apache.zookeeper.txn.MultiTxn;
 import org.apache.zookeeper.txn.TxnHeader;
@@ -377,6 +379,21 @@ public class PrepRequestProcessor extends Thread implements RequestProcessor {
                 }
                 LOG.info("Processed session termination for sessionid: 0x"
                         + Long.toHexString(request.sessionId));
+                break;
+            case OpCode.check:
+                zks.sessionTracker.checkSession(request.sessionId, request.getOwner());
+                CheckVersionRequest checkVersionRequest = (CheckVersionRequest)record;
+                path = checkVersionRequest.getPath();
+                nodeRecord = getRecordForPath(path);
+                checkACL(zks, nodeRecord.acl, ZooDefs.Perms.READ,
+                        request.authInfo);
+                version = checkVersionRequest.getVersion();
+                currentVersion = nodeRecord.stat.getVersion();
+                if (version != -1 && version != currentVersion) {
+                    throw new KeeperException.BadVersionException(path);
+                }
+                version = currentVersion + 1;
+                request.txn = new CheckVersionTxn(path, version);
                 break;
         }
     }

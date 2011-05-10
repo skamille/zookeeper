@@ -59,6 +59,7 @@ import org.apache.zookeeper.txn.DeleteTxn;
 import org.apache.zookeeper.txn.ErrorTxn;
 import org.apache.zookeeper.txn.SetACLTxn;
 import org.apache.zookeeper.txn.SetDataTxn;
+import org.apache.zookeeper.txn.CheckVersionTxn;
 import org.apache.zookeeper.txn.Txn;
 import org.apache.zookeeper.txn.MultiTxn;
 import org.apache.zookeeper.txn.TxnHeader;
@@ -814,6 +815,14 @@ public class DataTree {
                     ErrorTxn errTxn = (ErrorTxn) txn;
                     rc.err = errTxn.getErr();
                     break;
+                case OpCode.check:
+                    CheckVersionTxn checkTxn = (CheckVersionTxn) txn;
+                    debug = "Check Version transaction for "
+                            + checkTxn.getPath() 
+                            + " and version="
+                            + checkTxn.getVersion();
+                    rc.stat = statNode(checkTxn.getPath(), null);
+                    break;
                 case OpCode.multi:
                     MultiTxn multiTxn = (MultiTxn) txn ;
                     List<Txn> txns = multiTxn.getTxns();
@@ -844,6 +853,9 @@ public class DataTree {
                             case OpCode.error:
                                 record = new ErrorTxn();
                                 post_failed = true;
+                                break;
+                            case OpCode.check:
+                                record = new CheckVersionTxn();
                                 break;
                             default:
                                 throw new IOException("Invalid type of op: " + subtxn.getHdr().getType());
