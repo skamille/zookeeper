@@ -2913,7 +2913,7 @@ static void op_result_string_completion(int err, const char *value, const void *
     assert(result);
     result->err = err;
     
-    if (value) {
+    if (result->value && value) {
         int len = strlen(value) + 1;
         memcpy(result->value, value, len - 1);
         result->value[len - 1] = '\0';
