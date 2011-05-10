@@ -261,6 +261,12 @@ public class FinalRequestProcessor implements RequestProcessor {
                 rsp = new SyncResponse(syncRequest.getPath());
                 break;
             }
+            case OpCode.check: {
+                lastOp = "CHEC";
+                rsp = new SetDataResponse(rc.stat);
+                err = Code.get(rc.err);
+                break;
+            }
             case OpCode.exists: {
                 lastOp = "EXIS";
                 // TODO we need to figure out the security requirement for this!

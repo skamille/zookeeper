@@ -106,6 +106,7 @@ public class Request {
         case OpCode.createSession:
         case OpCode.exists:
         case OpCode.getData:
+        case OpCode.check:
         case OpCode.multi:
         case OpCode.setData:
         case OpCode.sync:
@@ -137,6 +138,7 @@ public class Request {
         case OpCode.delete:
         case OpCode.setACL:
         case OpCode.setData:
+        case OpCode.check:
         case OpCode.multi:
             return true;
         default:
@@ -158,6 +160,8 @@ public class Request {
             return "exists";
         case OpCode.getData:
             return "getData";
+        case OpCode.check:
+            return "check";
         case OpCode.multi:
             return "multi";
         case OpCode.setData:

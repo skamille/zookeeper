@@ -433,6 +433,11 @@ public class PrepRequestProcessor extends Thread implements RequestProcessor {
                 ZooKeeperServer.byteBuffer2Record(request.request, setAclRequest);
                 pRequest2Txn(request.type, zks.getNextZxid(), request, setAclRequest);
                 break;
+            case OpCode.check:
+                CheckVersionRequest checkRequest = new CheckVersionRequest();
+                ZooKeeperServer.byteBuffer2Record(request.request, checkRequest);
+                pRequest2Txn(request.type, zks.getNextZxid(), request, checkRequest);
+                break;
             case OpCode.multi:
                 MultiTransactionRecord multiRequest = new MultiTransactionRecord();
                 ZooKeeperServer.byteBuffer2Record(request.request, multiRequest);

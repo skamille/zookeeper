@@ -291,30 +291,26 @@ typedef struct op {
  * This macro is used to initialize an op_t with the arguments for 
  * a CREATE_OP.
  *
- * \param path The name of the node. Expressed as a file name with slashes 
+ * \param _path The name of the node. Expressed as a file name with slashes 
  * separating ancestors of the node.
- * \param value The data to be stored in the node.
- * \param valuelen The number of bytes in data. To set the data to be NULL use
+ * \param _value The data to be stored in the node.
+ * \param _valuelen The number of bytes in data. To set the data to be NULL use
  * value as NULL and valuelen as -1.
- * \param acl The initial ACL of the node. The ACL must not be null or empty.
+ * \param _acl The initial ACL of the node. The ACL must not be null or empty.
  * \param flags this parameter can be set to 0 for normal create or an OR
  *    of the Create Flags
- * \param path_buffer Buffer which will be filled with the path of the
+ * \param _path_buffer Buffer which will be filled with the path of the
  *    new node (this might be different than the supplied path
  *    because of the ZOO_SEQUENCE flag).  The path string will always be
  *    null-terminated. This parameter may be NULL if path_buffer_len = 0.
- * \param path_buffer_len Size of path buffer; if the path of the new
+ * \param _path_buffer_len Size of path buffer; if the path of the new
  *    node (including space for the null terminator) exceeds the buffer size,
  *    the path string will be truncated to fit.  The actual path of the
  *    new node in the server will not be affected by the truncation.
  *    The path string will always be null-terminated.
- *
  */
 #define op_create(_path, _value, _valuelen, _acl, _flags, _path_buffer, _path_buffer_len) \
     { CREATE_OP, _path, _value, _valuelen, _path_buffer, _path_buffer_len, _acl, _flags, -1, NULL }
-
-#define op_check(_path, _version, _stat) \
-    { CHECK_OP, _path, NULL, 0, NULL, 0, NULL, 0, _version, _stat }
 
 /**
  * \brief op_delete macro.
@@ -322,9 +318,9 @@ typedef struct op {
  * This macro is used to initialize an op_t with the arguments for 
  * a DELETE_OP.
  *
- * \param path the name of the node. Expressed as a file name with slashes 
+ * \param _path the name of the node. Expressed as a file name with slashes 
  * separating ancestors of the node.
- * \param version the expected version of the node. The function will fail if the
+ * \param _version the expected version of the node. The function will fail if the
  *    actual version of the node does not match the expected version.
  *  If -1 is used the version check will not take place. 
  */
@@ -337,18 +333,36 @@ typedef struct op {
  * This macro is used to initialize an op_t with the arguments for 
  * a SETDATA_OP.
  *
- * \param path the name of the node. Expressed as a file name with slashes 
+ * \param _path the name of the node. Expressed as a file name with slashes 
  * separating ancestors of the node.
- * \param buffer the buffer holding data to be written to the node.
- * \param buflen the number of bytes from buffer to write. To set NULL as data 
+ * \param _buffer the buffer holding data to be written to the node.
+ * \param _buflen the number of bytes from buffer to write. To set NULL as data 
  * use buffer as NULL and buflen as -1.
- * \param version the expected version of the node. The function will fail if 
+ * \param _version the expected version of the node. The function will fail if 
  * the actual version of the node does not match the expected version. If -1 is 
  * used the version check will not take place. 
  *
  */
 #define op_setdata(_path, _buffer, _buflen, _version, _stat) \
     { SETDATA_OP, _path, _buffer, _buflen, NULL, 0, NULL, 0, _version, _stat }
+
+/**
+ * \brief op_check macro.
+ *
+ * This macro is used to initialize an op_t with the arguments for 
+ * a CHEC_OP.
+ *
+ * \param _path The name of the node. Expressed as a file name with slashes 
+ * separating ancestors of the node.
+ * \param _version the expected version of the node. The function will fail if the
+ *    actual verison of the node does not match the expected version.
+ * \param _stat a pointer to the stat information for the node involved in
+ *   this function. If a non zero error code is returned, the content of
+ *   stat is undefined. The programmer is NOT responsible for freeing stat.
+ *   If NULL is passed in then nothing will be copied out to _stat.
+ */
+#define op_check(_path, _version, _stat) \
+    { CHECK_OP, _path, NULL, 0, NULL, 0, NULL, 0, _version, _stat }
 
 /**
  * \brief opresult structure.
@@ -1082,6 +1096,31 @@ ZOOAPI int zoo_aget_acl(zhandle_t *zh, const char *path, acl_completion_t comple
 ZOOAPI int zoo_aset_acl(zhandle_t *zh, const char *path, int version, 
         struct ACL_vector *acl, void_completion_t, const void *data);
 
+/**
+ * \brief perform a version check with a node and optionally get its stat.
+ * 
+ * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
+ * \param path the name of the node. Expressed as a file name with slashes 
+ * \param version the expected version of the node. The function will fail if the
+ *    actual version of the node does not match the expected version.
+ * \param stat a pointer to the stat information for the node involved in
+ *   this function. If a non zero error code is returned, the content of
+ *   stat is undefined. The programmer is NOT responsible for freeing stat.
+ *   If NULL is passed in then nothing will be copied out to _stat.
+ * \param completion the routine to invoke when the request completes. The completion
+ * will be triggered with one of the following codes passed in as the rc argument:
+ * ZOK operation completed successfully
+ * ZNONODE the parent node does not exist.
+ * ZNODEEXISTS the node already exists
+ * ZNOAUTH the client does not have permission.
+ * ZNOCHILDRENFOREPHEMERALS cannot create children of ephemeral nodes.
+ * \param data The data that will be passed to the completion routine when the 
+ * function completes.
+ * \return ZOK on success or one of the following errcodes on failure:
+ * ZBADARGUMENTS - invalid input parameters
+ * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
+ * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
+ */
 ZOOAPI int zoo_acheck(zhandle_t *zh, const char *path, int version,
         stat_completion_t completion, const void *data);
 
@@ -1534,6 +1573,25 @@ ZOOAPI int zoo_get_acl(zhandle_t *zh, const char *path, struct ACL_vector *acl,
 ZOOAPI int zoo_set_acl(zhandle_t *zh, const char *path, int version,
                            const struct ACL_vector *acl);
 
+/**
+ * \brief perform a version check with a node and optionally get its stat.
+ * 
+ * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
+ * \param path the name of the node. Expressed as a file name with slashes 
+ * \param version the expected version of the node. The function will fail if the
+ *    actual version of the node does not match the expected version.
+ * \param _stat a pointer to the stat information for the node involved in
+ *   this function. If a non zero error code is returned, the content of
+ *   stat is undefined. The programmer is NOT responsible for freeing stat.
+ *   If NULL is passed in then nothing will be copied out to _stat.
+ * \return the return code for the function call.
+ * ZOK operation completed successfully
+ * ZNONODE the parent node does not exist.
+ * ZNOAUTH the client does not have permission.
+ * ZBADARGUMENTS - invalid input parameters
+ * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
+ * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
+ */
 ZOOAPI int zoo_check(zhandle_t *zh, const char *path, int version, struct Stat *stat);
 
 /**
