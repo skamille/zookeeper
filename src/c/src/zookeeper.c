@@ -2251,7 +2251,7 @@ static completion_list_t* create_completion_entry(int xid, int completion_type,
     if (clist) {
         c->clist = *clist;
     } else {
-        //c->clist = NULL;
+        memset(&c->clist, 0, sizeof(completion_head_t));
     }
 
     return c;
@@ -2915,8 +2915,13 @@ static void op_result_string_completion(int err, const char *value, const void *
     
     if (result->value && value) {
         int len = strlen(value) + 1;
-        memcpy(result->value, value, len - 1);
-        result->value[len - 1] = '\0';
+		if (len > result->valuelen) {
+			len = result->valuelen;
+		}
+		if (len > 0) {
+			memcpy(result->value, value, len - 1);
+			result->value[len - 1] = '\0';
+		}
     } else {
         result->value = NULL;
     }
@@ -2925,12 +2930,14 @@ static void op_result_string_completion(int err, const char *value, const void *
 static void op_result_void_completion(int err, const void *data)
 {
     struct op_result *result = (struct op_result *)data;
+    assert(result);
     result->err = err;
 }
 
 static void op_result_stat_completion(int err, const struct Stat *stat, const void *data)
 {
     struct op_result *result = (struct op_result *)data;
+    assert(result);
     result->err = err;
 
     if (result->stat && err == 0 && stat) {
@@ -2942,6 +2949,11 @@ static void op_result_stat_completion(int err, const struct Stat *stat, const vo
 
 static void op_result_multi_completion(int err, const void *data)
 {
+	/* Nothing to do as this is a placeholder only. It's only purpose is to hold the
+	 * list of completions for each op in the multi op. There's a "tail completion"
+	 * in that list that actually notifies the caller and updates the return
+	 * code.
+	 */
 }
 
 static int CheckVersionRequest_init(zhandle_t *zh, struct CheckVersionRequest *req,
@@ -2992,12 +3004,11 @@ int zoo_amulti(zhandle_t *zh, int count, const op_t *ops,
 {
     struct RequestHeader h = { .xid = get_xid(), .type = MULTI_OP };
     struct oarchive *oa = create_buffer_oarchive();
-    int rc = ZOK;
-    int index = 0;
     completion_head_t clist = { 0 };
 
-    rc = rc < 0 ? rc : serialize_RequestHeader(oa, "header", &h);
+    int rc = serialize_RequestHeader(oa, "header", &h);
 
+    int index = 0;
     for (index=0; index < count; index++) {
         const op_t *op = ops+index;
         op_result_t *result = results+index;
@@ -3013,6 +3024,7 @@ int zoo_amulti(zhandle_t *zh, int count, const op_t *ops,
                 rc = rc < 0 ? rc : CreateRequest_init(zh, &req, op->path, op->data, op->datalen, op->acl, op->flags);
                 rc = rc < 0 ? rc : serialize_CreateRequest(oa, "req", &req);
                 result->value = op->buf;
+				result->valuelen = op->buflen;
 
                 enter_critical(zh);
                 entry = create_completion_entry(h.xid, COMPLETION_STRING, op_result_string_completion, result, 0, 0); 

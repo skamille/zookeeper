@@ -392,9 +392,9 @@ public:
         CPPUNIT_ASSERT(strcmp(p2, "/multi1/a") == 0);
         CPPUNIT_ASSERT(strcmp(p3, "/multi1/b") == 0);
 
-        CPPUNIT_ASSERT_EQUAL(results[0].err, 0);
-        CPPUNIT_ASSERT_EQUAL(results[1].err, 0);
-        CPPUNIT_ASSERT_EQUAL(results[2].err, 0);
+        CPPUNIT_ASSERT_EQUAL((int)ZOK, results[0].err);
+        CPPUNIT_ASSERT_EQUAL((int)ZOK, results[1].err);
+        CPPUNIT_ASSERT_EQUAL((int)ZOK, results[2].err);
     }
 
     /**
@@ -418,7 +418,7 @@ public:
         rc = zoo_multi(zk, nops, ops, results);
         CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
 
-        // '/multi' should have been deleted
+        // '/multi2' should have been deleted
         rc = zoo_exists(zk, "/multi2", 0, NULL);
         CPPUNIT_ASSERT_EQUAL((int)ZNONODE, rc);
     }
@@ -517,9 +517,9 @@ public:
         op_result_t setdata_results[nsops];
 
         rc = zoo_multi(zk, nsops, setdata_ops, setdata_results);
-        CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
-        CPPUNIT_ASSERT_EQUAL(results[0].err, 0);
-        CPPUNIT_ASSERT_EQUAL(results[1].err, 0);
+        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
+        CPPUNIT_ASSERT_EQUAL((int)ZOK, results[0].err);
+        CPPUNIT_ASSERT_EQUAL((int)ZOK, results[1].err);
         
         memset(buf, '\0', blen);
         rc = zoo_get(zk, "/multi5", 0, buf, &blen, &s1);
@@ -628,9 +628,9 @@ public:
         CPPUNIT_ASSERT(strcmp(p2, "/multi8/a") == 0);
         CPPUNIT_ASSERT(strcmp(p3, "/multi8/b") == 0);
 
-        CPPUNIT_ASSERT_EQUAL(results[0].err, 0);
-        CPPUNIT_ASSERT_EQUAL(results[1].err, 0);
-        CPPUNIT_ASSERT_EQUAL(results[2].err, 0);
+        CPPUNIT_ASSERT_EQUAL((int)ZOK, results[0].err);
+        CPPUNIT_ASSERT_EQUAL((int)ZOK, results[1].err);
+        CPPUNIT_ASSERT_EQUAL((int)ZOK, results[2].err);
     }
 
     void testMultiFail() {
@@ -689,8 +689,8 @@ public:
         rc = zoo_multi(zk, nops, ops, results);
         CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
 
-        CPPUNIT_ASSERT_EQUAL(0, results[0].err);
-        CPPUNIT_ASSERT_EQUAL(0, results[1].err);
+        CPPUNIT_ASSERT_EQUAL((int)ZOK, results[0].err);
+        CPPUNIT_ASSERT_EQUAL((int)ZOK, results[1].err);
 
         // '/multi0/a' should have been created as it passed version check
         rc = zoo_exists(zk, "/multi0/a", 0, NULL);

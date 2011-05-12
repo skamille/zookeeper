@@ -373,6 +373,7 @@ typedef struct op {
 typedef struct op_result {
     int err;
     char *value;
+	int valuelen;
     struct Stat *stat;
 } op_result_t; 
 
@@ -1103,10 +1104,6 @@ ZOOAPI int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
  * \param path the name of the node. Expressed as a file name with slashes 
  * \param version the expected version of the node. The function will fail if the
  *    actual version of the node does not match the expected version.
- * \param stat a pointer to the stat information for the node involved in
- *   this function. If a non zero error code is returned, the content of
- *   stat is undefined. The programmer is NOT responsible for freeing stat.
- *   If NULL is passed in then nothing will be copied out to _stat.
  * \param completion the routine to invoke when the request completes. The completion
  * will be triggered with one of the following codes passed in as the rc argument:
  * ZOK operation completed successfully
@@ -1580,7 +1577,7 @@ ZOOAPI int zoo_set_acl(zhandle_t *zh, const char *path, int version,
  * \param path the name of the node. Expressed as a file name with slashes 
  * \param version the expected version of the node. The function will fail if the
  *    actual version of the node does not match the expected version.
- * \param _stat a pointer to the stat information for the node involved in
+ * \param stat a pointer to the stat information for the node involved in
  *   this function. If a non zero error code is returned, the content of
  *   stat is undefined. The programmer is NOT responsible for freeing stat.
  *   If NULL is passed in then nothing will be copied out to _stat.
