@@ -114,8 +114,6 @@ enum ZOO_ERRORS {
   ZSESSIONMOVED = -118 /*!<session moved to another server, so operation is ignored */ 
 };
 
-#define MULTI_OP_DELIM 0x2001CEE0
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -271,10 +269,10 @@ typedef struct op {
     const char *path;
     const char *data;
     int datalen;
-    char *buf;
-    int buflen;
-    
+
     //CREATE
+	char *buf;
+    int buflen;
     const struct ACL_vector *acl;
     int flags;
 
@@ -289,7 +287,7 @@ typedef struct op {
  * \brief op_create macro.
  *
  * This macro is used to initialize an op_t with the arguments for 
- * a CREATE_OP.
+ * a ZOO_CREATE_OP.
  *
  * \param _path The name of the node. Expressed as a file name with slashes 
  * separating ancestors of the node.
@@ -310,13 +308,13 @@ typedef struct op {
  *    The path string will always be null-terminated.
  */
 #define op_create(_path, _value, _valuelen, _acl, _flags, _path_buffer, _path_buffer_len) \
-    { CREATE_OP, _path, _value, _valuelen, _path_buffer, _path_buffer_len, _acl, _flags, -1, NULL }
+    { ZOO_CREATE_OP, _path, _value, _valuelen, _path_buffer, _path_buffer_len, _acl, _flags, -1, NULL }
 
 /**
  * \brief op_delete macro.
  *
  * This macro is used to initialize an op_t with the arguments for 
- * a DELETE_OP.
+ * a ZOO_DELETE_OP.
  *
  * \param _path the name of the node. Expressed as a file name with slashes 
  * separating ancestors of the node.
@@ -325,13 +323,13 @@ typedef struct op {
  *  If -1 is used the version check will not take place. 
  */
 #define op_delete(_path, _version) \
-    { DELETE_OP, _path, NULL, 0, NULL, 0, NULL, 0, _version, NULL }
+    { ZOO_DELETE_OP, _path, NULL, 0, NULL, 0, NULL, 0, _version, NULL }
 
 /**
  * \brief op_setdata macro.
  *
  * This macro is used to initialize an op_t with the arguments for 
- * a SETDATA_OP.
+ * a ZOO_SETDATA_OP.
  *
  * \param _path the name of the node. Expressed as a file name with slashes 
  * separating ancestors of the node.
@@ -344,13 +342,13 @@ typedef struct op {
  *
  */
 #define op_setdata(_path, _buffer, _buflen, _version, _stat) \
-    { SETDATA_OP, _path, _buffer, _buflen, NULL, 0, NULL, 0, _version, _stat }
+    { ZOO_SETDATA_OP, _path, _buffer, _buflen, NULL, 0, NULL, 0, _version, _stat }
 
 /**
  * \brief op_check macro.
  *
  * This macro is used to initialize an op_t with the arguments for 
- * a CHEC_OP.
+ * a ZOO_CHECK_OP.
  *
  * \param _path The name of the node. Expressed as a file name with slashes 
  * separating ancestors of the node.
@@ -362,7 +360,7 @@ typedef struct op {
  *   If NULL is passed in then nothing will be copied out to _stat.
  */
 #define op_check(_path, _version, _stat) \
-    { CHECK_OP, _path, NULL, 0, NULL, 0, NULL, 0, _version, _stat }
+    { ZOO_CHECK_OP, _path, NULL, 0, NULL, 0, NULL, 0, _version, _stat }
 
 /**
  * \brief opresult structure.

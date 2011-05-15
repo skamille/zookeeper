@@ -1232,7 +1232,7 @@ static void auth_completion_func(int rc, zhandle_t* zh)
 
 static int send_info_packet(zhandle_t *zh, auth_info* auth) {
     struct oarchive *oa;
-    struct RequestHeader h = { .xid = AUTH_XID, .type = SETAUTH_OP};
+    struct RequestHeader h = { .xid = AUTH_XID, .type = ZOO_SETAUTH_OP};
     struct AuthPacket req;
     int rc;
     oa = create_buffer_oarchive();
@@ -1300,7 +1300,7 @@ static void free_key_list(char **list, int count)
 static int send_set_watches(zhandle_t *zh)
 {
     struct oarchive *oa;
-    struct RequestHeader h = { .xid = SET_WATCHES_XID, .type = SETWATCHES_OP};
+    struct RequestHeader h = { .xid = SET_WATCHES_XID, .type = ZOO_SETWATCHES_OP};
     struct SetWatches req;
     int rc;
 
@@ -1454,7 +1454,7 @@ static struct timeval get_timeval(int interval)
  {
     int rc;
     struct oarchive *oa = create_buffer_oarchive();
-    struct RequestHeader h = { .xid = PING_XID, .type = PING_OP };
+    struct RequestHeader h = { .xid = PING_XID, .type = ZOO_PING_OP };
 
     rc = serialize_RequestHeader(oa, "header", &h);
     enter_critical(zh);
@@ -2389,7 +2389,7 @@ int zookeeper_close(zhandle_t *zh)
     }
     if(zh->state==ZOO_CONNECTED_STATE){
         struct oarchive *oa;
-        struct RequestHeader h = { .xid = get_xid(), .type = CLOSE_OP};
+        struct RequestHeader h = { .xid = get_xid(), .type = ZOO_CLOSE_OP};
         LOG_INFO(("Closing zookeeper sessionId=%#llx to [%s]\n",
                 zh->client_id.client_id,format_current_endpoint_info(zh)));
         oa = create_buffer_oarchive();
@@ -2512,7 +2512,7 @@ int zoo_awget(zhandle_t *zh, const char *path,
 {
     struct oarchive *oa;
     char *server_path = prepend_string(zh, path);
-    struct RequestHeader h = { .xid = get_xid(), .type = GETDATA_OP};
+    struct RequestHeader h = { .xid = get_xid(), .type = ZOO_GETDATA_OP};
     struct GetDataRequest req =  { (char*)server_path, watcher!=0 };
     int rc;
 
@@ -2563,7 +2563,7 @@ int zoo_aset(zhandle_t *zh, const char *path, const char *buffer, int buflen,
         int version, stat_completion_t dc, const void *data)
 {
     struct oarchive *oa;
-    struct RequestHeader h = { .xid = get_xid(), .type = SETDATA_OP};
+    struct RequestHeader h = { .xid = get_xid(), .type = ZOO_SETDATA_OP};
     struct SetDataRequest req;
     int rc = SetDataRequest_init(zh, &req, path, buffer, buflen, version);
     if (rc != ZOK) {
@@ -2615,7 +2615,7 @@ int zoo_acreate(zhandle_t *zh, const char *path, const char *value,
         string_completion_t completion, const void *data)
 {
     struct oarchive *oa;
-    struct RequestHeader h = { .xid = get_xid(), .type = CREATE_OP };
+    struct RequestHeader h = { .xid = get_xid(), .type = ZOO_CREATE_OP };
     struct CreateRequest req;
 
     int rc = CreateRequest_init(zh, &req, 
@@ -2657,7 +2657,7 @@ int zoo_adelete(zhandle_t *zh, const char *path, int version,
         void_completion_t completion, const void *data)
 {
     struct oarchive *oa;
-    struct RequestHeader h = { .xid = get_xid(), .type = DELETE_OP};
+    struct RequestHeader h = { .xid = get_xid(), .type = ZOO_DELETE_OP};
     struct DeleteRequest req;
     int rc = DeleteRequest_init(zh, &req, path, version);
     if (rc != ZOK) {
@@ -2693,7 +2693,7 @@ int zoo_awexists(zhandle_t *zh, const char *path,
         stat_completion_t completion, const void *data)
 {
     struct oarchive *oa;
-    struct RequestHeader h = { .xid = get_xid(), .type = EXISTS_OP };
+    struct RequestHeader h = { .xid = get_xid(), .type = ZOO_EXISTS_OP };
     struct ExistsRequest req;
     int rc = Request_path_watch_init(zh, 0, &req.path, path, 
             &req.watch, watcher != NULL);
@@ -2727,7 +2727,7 @@ static int zoo_awget_children_(zhandle_t *zh, const char *path,
          const void *data)
 {
     struct oarchive *oa;
-    struct RequestHeader h = { .xid = get_xid(), .type = GETCHILDREN_OP};
+    struct RequestHeader h = { .xid = get_xid(), .type = ZOO_GETCHILDREN_OP};
     struct GetChildrenRequest req ;
     int rc = Request_path_watch_init(zh, 0, &req.path, path, 
             &req.watch, watcher != NULL);
@@ -2775,7 +2775,7 @@ static int zoo_awget_children2_(zhandle_t *zh, const char *path,
 {
     /* invariant: (sc == NULL) != (sc == NULL) */
     struct oarchive *oa;
-    struct RequestHeader h = { .xid = get_xid(), .type = GETCHILDREN2_OP};
+    struct RequestHeader h = { .xid = get_xid(), .type = ZOO_GETCHILDREN2_OP};
     struct GetChildren2Request req ;
     int rc = Request_path_watch_init(zh, 0, &req.path, path, 
             &req.watch, watcher != NULL);
@@ -2820,7 +2820,7 @@ int zoo_async(zhandle_t *zh, const char *path,
         string_completion_t completion, const void *data)
 {
     struct oarchive *oa;
-    struct RequestHeader h = { .xid = get_xid(), .type = SYNC_OP};
+    struct RequestHeader h = { .xid = get_xid(), .type = ZOO_SYNC_OP};
     struct SyncRequest req;
     int rc = Request_path_init(zh, 0, &req.path, path);
     if (rc != ZOK) {
@@ -2850,7 +2850,7 @@ int zoo_aget_acl(zhandle_t *zh, const char *path, acl_completion_t completion,
         const void *data)
 {
     struct oarchive *oa;
-    struct RequestHeader h = { .xid = get_xid(), .type = GETACL_OP};
+    struct RequestHeader h = { .xid = get_xid(), .type = ZOO_GETACL_OP};
     struct GetACLRequest req;
     int rc = Request_path_init(zh, 0, &req.path, path) ;
     if (rc != ZOK) {
@@ -2879,7 +2879,7 @@ int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
         struct ACL_vector *acl, void_completion_t completion, const void *data)
 {
     struct oarchive *oa;
-    struct RequestHeader h = { .xid = get_xid(), .type = SETACL_OP};
+    struct RequestHeader h = { .xid = get_xid(), .type = ZOO_SETACL_OP};
     struct SetACLRequest req;
     int rc = Request_path_init(zh, 0, &req.path, path);
     if (rc != ZOK) {
@@ -2974,7 +2974,7 @@ int zoo_acheck(zhandle_t *zh, const char *path, int version,
         stat_completion_t completion, const void *data)
 {
     struct oarchive *oa;
-    struct RequestHeader h = { .xid = get_xid(), .type = CHECK_OP };
+    struct RequestHeader h = { .xid = get_xid(), .type = ZOO_CHECK_OP };
     struct CheckVersionRequest req;
     int rc = CheckVersionRequest_init(zh, &req, path, version);
     if (rc != ZOK) {
@@ -3002,7 +3002,7 @@ int zoo_acheck(zhandle_t *zh, const char *path, int version,
 int zoo_amulti(zhandle_t *zh, int count, const op_t *ops,
         op_result_t *results, void_completion_t completion, const void *data)
 {
-    struct RequestHeader h = { .xid = get_xid(), .type = MULTI_OP };
+    struct RequestHeader h = { .xid = get_xid(), .type = ZOO_MULTI_OP };
     struct oarchive *oa = create_buffer_oarchive();
     completion_head_t clist = { 0 };
 
@@ -3018,7 +3018,7 @@ int zoo_amulti(zhandle_t *zh, int count, const op_t *ops,
         rc = rc < 0 ? rc : serialize_MultiHeader(oa, "multiheader", &mh);
      
         switch(op->type) {
-            case CREATE_OP: {
+            case ZOO_CREATE_OP: {
                 struct CreateRequest req;
 
                 rc = rc < 0 ? rc : CreateRequest_init(zh, &req, op->path, op->data, op->datalen, op->acl, op->flags);
@@ -3033,7 +3033,7 @@ int zoo_amulti(zhandle_t *zh, int count, const op_t *ops,
                 break;
             }
 
-            case DELETE_OP: {
+            case ZOO_DELETE_OP: {
                 struct DeleteRequest req;
                 rc = rc < 0 ? rc : DeleteRequest_init(zh, &req, op->path, op->version);
                 rc = rc < 0 ? rc : serialize_DeleteRequest(oa, "req", &req);
@@ -3045,7 +3045,7 @@ int zoo_amulti(zhandle_t *zh, int count, const op_t *ops,
                 break;
             }
 
-            case SETDATA_OP: {
+            case ZOO_SETDATA_OP: {
                 struct SetDataRequest req;
                 rc = rc < 0 ? rc : SetDataRequest_init(zh, &req, op->path, op->data, op->datalen, op->version);
                 rc = rc < 0 ? rc : serialize_SetDataRequest(oa, "req", &req);
@@ -3058,7 +3058,7 @@ int zoo_amulti(zhandle_t *zh, int count, const op_t *ops,
                 break;
             }
 
-            case CHECK_OP: {
+            case ZOO_CHECK_OP: {
                 struct CheckVersionRequest req;
                 rc = rc < 0 ? rc : CheckVersionRequest_init(zh, &req, op->path, op->version);
                 rc = rc < 0 ? rc : serialize_CheckVersionRequest(oa, "req", &req);
