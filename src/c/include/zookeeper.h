@@ -281,12 +281,12 @@ typedef struct op {
 
     //SETDATA
     struct Stat *stat; 
-} op_t;
+} zoo_op_t;
 
 /**
  * \brief op_create macro.
  *
- * This macro is used to initialize an op_t with the arguments for 
+ * This macro is used to initialize an zoo_op_t with the arguments for 
  * a ZOO_CREATE_OP.
  *
  * \param _path The name of the node. Expressed as a file name with slashes 
@@ -313,7 +313,7 @@ typedef struct op {
 /**
  * \brief op_delete macro.
  *
- * This macro is used to initialize an op_t with the arguments for 
+ * This macro is used to initialize an zoo_op_t with the arguments for 
  * a ZOO_DELETE_OP.
  *
  * \param _path the name of the node. Expressed as a file name with slashes 
@@ -328,7 +328,7 @@ typedef struct op {
 /**
  * \brief op_setdata macro.
  *
- * This macro is used to initialize an op_t with the arguments for 
+ * This macro is used to initialize an zoo_op_t with the arguments for 
  * a ZOO_SETDATA_OP.
  *
  * \param _path the name of the node. Expressed as a file name with slashes 
@@ -347,7 +347,7 @@ typedef struct op {
 /**
  * \brief op_check macro.
  *
- * This macro is used to initialize an op_t with the arguments for 
+ * This macro is used to initialize an zoo_op_t with the arguments for 
  * a ZOO_CHECK_OP.
  *
  * \param _path The name of the node. Expressed as a file name with slashes 
@@ -373,7 +373,7 @@ typedef struct op_result {
     char *value;
 	int valuelen;
     struct Stat *stat;
-} op_result_t; 
+} zoo_op_result_t; 
 
 /**
  * \brief signature of a watch function.
@@ -1135,8 +1135,8 @@ ZOOAPI int zoo_acheck(zhandle_t *zh, const char *path, int version,
  * values that can be returned by the ops supported by a multi op (see
  * \ref zoo_acreate, \ref zoo_adelete, \ref zoo_aset).
  */
-ZOOAPI int zoo_amulti(zhandle_t *zh, int count, const op_t *ops, 
-        op_result_t *results, void_completion_t, const void *data);
+ZOOAPI int zoo_amulti(zhandle_t *zh, int count, const zoo_op_t *ops, 
+        zoo_op_result_t *results, void_completion_t, const void *data);
 
 /**
  * \brief return an error string.
@@ -1600,7 +1600,7 @@ ZOOAPI int zoo_check(zhandle_t *zh, const char *path, int version, struct Stat *
  * values that can be returned by the ops supported by a multi op (see
  * \ref zoo_acreate, \ref zoo_adelete, \ref zoo_aset).
  */ 
-ZOOAPI int zoo_multi(zhandle_t *zh, int count, const op_t *ops, op_result_t *results);
+ZOOAPI int zoo_multi(zhandle_t *zh, int count, const zoo_op_t *ops, zoo_op_result_t *results);
 
 #ifdef __cplusplus
 }

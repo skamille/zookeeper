@@ -2999,8 +2999,8 @@ int zoo_acheck(zhandle_t *zh, const char *path, int version,
     return (rc < 0)?ZMARSHALLINGERROR:ZOK;
 }
 
-int zoo_amulti(zhandle_t *zh, int count, const op_t *ops,
-        op_result_t *results, void_completion_t completion, const void *data)
+int zoo_amulti(zhandle_t *zh, int count, const zoo_op_t *ops,
+        zoo_op_result_t *results, void_completion_t completion, const void *data)
 {
     struct RequestHeader h = { .xid = get_xid(), .type = ZOO_MULTI_OP };
     struct oarchive *oa = create_buffer_oarchive();
@@ -3010,8 +3010,8 @@ int zoo_amulti(zhandle_t *zh, int count, const op_t *ops,
 
     int index = 0;
     for (index=0; index < count; index++) {
-        const op_t *op = ops+index;
-        op_result_t *result = results+index;
+        const zoo_op_t *op = ops+index;
+        zoo_op_result_t *result = results+index;
         completion_list_t *entry = NULL;
 
         struct MultiHeader mh = { .type=op->type, .done=0, .err=-1 };
@@ -3126,7 +3126,7 @@ int zoo_check(zhandle_t *zh, const char *path, int version, struct Stat *stat)
     return rc;
 }
 
-int zoo_multi(zhandle_t *zh, int count, const op_t *ops, op_result_t *results)
+int zoo_multi(zhandle_t *zh, int count, const zoo_op_t *ops, zoo_op_result_t *results)
 {
     int rc;
  
