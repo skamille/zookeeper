@@ -264,7 +264,7 @@ typedef struct {
  * of type. The structures should be initialized via the helper macros
  * \ref op_create, \ref op_delete and \ref op_setdata.
  */
-typedef struct op {
+typedef struct zoo_op {
     int type;
     const char *path;
     const char *data;
@@ -368,7 +368,7 @@ typedef struct op {
  * This structure holds the result for an op submitted as part of a multi_op
  * via \ref zoo_multi or \ref zoo_amulti.
  */
-typedef struct op_result {
+typedef struct zoo_op_result {
     int err;
     char *value;
 	int valuelen;

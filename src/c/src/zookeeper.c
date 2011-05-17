@@ -2909,7 +2909,7 @@ int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
 /* Completions for multi-op results */
 static void op_result_string_completion(int err, const char *value, const void *data)
 {
-    struct op_result *result = (struct op_result *)data;
+    struct zoo_op_result *result = (struct zoo_op_result *)data;
     assert(result);
     result->err = err;
     
@@ -2929,14 +2929,14 @@ static void op_result_string_completion(int err, const char *value, const void *
 
 static void op_result_void_completion(int err, const void *data)
 {
-    struct op_result *result = (struct op_result *)data;
+    struct zoo_op_result *result = (struct zoo_op_result *)data;
     assert(result);
     result->err = err;
 }
 
 static void op_result_stat_completion(int err, const struct Stat *stat, const void *data)
 {
-    struct op_result *result = (struct op_result *)data;
+    struct zoo_op_result *result = (struct zoo_op_result *)data;
     assert(result);
     result->err = err;
 
