@@ -1853,12 +1853,13 @@ static void process_sync_completion(
     }
 }
 
-void deserialize_response(int type, int xid, int rc, completion_list_t *cptr, struct iarchive *ia)
+void deserialize_response(int type, int xid, int failed, int rc, completion_list_t *cptr, struct iarchive *ia)
 {
     switch (type) {
     case COMPLETION_DATA:
-        LOG_DEBUG(("Calling COMPLETION_DATA for xid=%#x rc=%d",cptr->xid,rc));
-        if (rc) {
+        LOG_DEBUG(("Calling COMPLETION_DATA for xid=%#x failed=%d rc=%d",
+                    cptr->xid, failed, rc));
+        if (failed) {
             cptr->c.data_result(rc, 0, 0, 0, cptr->data);
         } else {
             struct GetDataResponse res;
@@ -1869,8 +1870,9 @@ void deserialize_response(int type, int xid, int rc, completion_list_t *cptr, st
         }
         break;
     case COMPLETION_STAT:
-        LOG_DEBUG(("Calling COMPLETION_STAT for xid=%#x rc=%d",cptr->xid,rc));
-        if (rc) {
+        LOG_DEBUG(("Calling COMPLETION_STAT for xid=%#x failed=%d rc=%d",
+                    cptr->xid, failed, rc));
+        if (failed) {
             cptr->c.stat_result(rc, 0, cptr->data);
         } else {
             struct SetDataResponse res;
@@ -1880,8 +1882,9 @@ void deserialize_response(int type, int xid, int rc, completion_list_t *cptr, st
         }
         break;
     case COMPLETION_STRINGLIST:
-        LOG_DEBUG(("Calling COMPLETION_STRINGLIST for xid=%#x rc=%d",cptr->xid,rc));
-        if (rc) {
+        LOG_DEBUG(("Calling COMPLETION_STRINGLIST for xid=%#x failed=%d rc=%d",
+                    cptr->xid, failed, rc));
+        if (failed) {
             cptr->c.strings_result(rc, 0, cptr->data);
         } else {
             struct GetChildrenResponse res;
@@ -1891,8 +1894,9 @@ void deserialize_response(int type, int xid, int rc, completion_list_t *cptr, st
         }
         break;
     case COMPLETION_STRINGLIST_STAT:
-        LOG_DEBUG(("Calling COMPLETION_STRINGLIST_STAT for xid=%#x rc=%d",cptr->xid,rc));
-        if (rc) {
+        LOG_DEBUG(("Calling COMPLETION_STRINGLIST_STAT for xid=%#x failed=%d rc=%d",
+                    cptr->xid, failed, rc));
+        if (failed) {
             cptr->c.strings_stat_result(rc, 0, 0, cptr->data);
         } else {
             struct GetChildren2Response res;
@@ -1902,8 +1906,9 @@ void deserialize_response(int type, int xid, int rc, completion_list_t *cptr, st
         }
         break;
     case COMPLETION_STRING:
-        LOG_DEBUG(("%s:%d: Calling COMPLETION_STRING for xid=%#x rc=%d",__func__, __LINE__, cptr->xid,rc));
-        if (rc) {
+        LOG_DEBUG(("Calling COMPLETION_STRING for xid=%#x failed=%d, rc=%d",
+                    cptr->xid, failed, rc));
+        if (failed) {
             cptr->c.string_result(rc, 0, cptr->data);
         } else {
             struct CreateResponse res;
@@ -1913,8 +1918,9 @@ void deserialize_response(int type, int xid, int rc, completion_list_t *cptr, st
         }
         break;
     case COMPLETION_ACLLIST:
-        LOG_DEBUG(("Calling COMPLETION_ACLLIST for xid=%#x rc=%d",cptr->xid,rc));
-        if (rc) {
+        LOG_DEBUG(("Calling COMPLETION_ACLLIST for xid=%#x failed=%d rc=%d",
+                    cptr->xid, failed, rc));
+        if (failed) {
             cptr->c.acl_result(rc, 0, 0, cptr->data);
         } else {
             struct GetACLResponse res;
@@ -1924,7 +1930,8 @@ void deserialize_response(int type, int xid, int rc, completion_list_t *cptr, st
         }
         break;
     case COMPLETION_VOID:
-        LOG_DEBUG(("Calling COMPLETION_VOID for xid=%#x rc=%d",cptr->xid,rc));
+        LOG_DEBUG(("Calling COMPLETION_VOID for xid=%#x failed=%d rc=%d",
+                    cptr->xid, failed, rc));
         if (xid == PING_XID) {
             // We want to skip the ping
         } else {
@@ -1976,7 +1983,7 @@ void process_completions(zhandle_t *zh)
                     if (mhdr.type == -1) {
                         struct ErrorResponse er;
                         deserialize_ErrorResponse(ia, "error", &er);
-                        mhdr.err = er.err == 0 ? ZRUNTIMEINCONSISTENCY : er.err;
+						mhdr.err = er.err ;
 
                         /* Server sets a value of '0' in error's err field if
                          * that op didn't fail, and ZRUNTIMEINCONSISTENCY for
@@ -1985,12 +1992,12 @@ void process_completions(zhandle_t *zh)
                          * to fail. This should always match the overall return
                          * value from the multi-op.
                          */
-                        if (er.err != 0 && er.err != ZRUNTIMEINCONSISTENCY) {
+                        if (multi_err == 0 && er.err != 0 && er.err != ZRUNTIMEINCONSISTENCY) {
                             multi_err = er.err;
                         }
                     }
 
-                    deserialize_response(entry->c.type, hdr.xid, mhdr.err, entry, ia);
+					deserialize_response(entry->c.type, hdr.xid, mhdr.type == -1, mhdr.err, entry, ia);
 
                     deserialize_MultiHeader(ia, "multiheader", &mhdr);
                 }
@@ -2013,7 +2020,7 @@ void process_completions(zhandle_t *zh)
                     return;
                 }
             } else {
-                deserialize_response(cptr->c.type, hdr.xid, hdr.err, cptr, ia);
+                deserialize_response(cptr->c.type, hdr.xid, hdr.err != 0, hdr.err, cptr, ia);
             }
         }
         destroy_completion_entry(cptr);

@@ -433,13 +433,19 @@ public:
        
         zoo_op_t ops[] = {
             op_create("/multi3", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0),
-            op_delete("/multi3", 1)
+            op_delete("/multi3", 1),
+			op_create("/multi3", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0),
+			op_create("/multi3/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0)
         };
         int nops = sizeof(ops) / sizeof(ops[0]);
         zoo_op_result_t results[nops];
         
         rc = zoo_multi(zk, nops, ops, results);
         CPPUNIT_ASSERT_EQUAL((int)ZBADVERSION, rc);
+        CPPUNIT_ASSERT_EQUAL((int)ZOK, results[0].err);
+        CPPUNIT_ASSERT_EQUAL((int)ZBADVERSION, results[1].err);
+        CPPUNIT_ASSERT_EQUAL((int)ZRUNTIMEINCONSISTENCY, results[2].err);
+        CPPUNIT_ASSERT_EQUAL((int)ZRUNTIMEINCONSISTENCY, results[3].err);
     }
 
     /**
