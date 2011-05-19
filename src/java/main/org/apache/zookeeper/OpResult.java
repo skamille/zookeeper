@@ -30,10 +30,22 @@ public class OpResult {
         this.type = type;
     }
 
+    /**
+     * Encodes the return type as from ZooDefs.OpCode.  Can be used
+     * to dispatch to the correct cast needed for getting the desired
+     * additional result data.
+     * @see ZooDefs.OpCode
+     * @return an integer identifying what kind of operation this result came from.
+     */
     public int getType() {
         return type;
     }
 
+    /**
+     * A result from a create operation.  This kind of result allows the
+     * path to be retrieved since the create might have been a sequential
+     * create.
+     */
     public static class CreateResult extends OpResult {
         private String path;
 
@@ -61,6 +73,9 @@ public class OpResult {
         }
     }
 
+    /**
+     * A result from a delete operation.  No special values are available.
+     */
     public static class DeleteResult extends OpResult {
         public DeleteResult() {
             super(ZooDefs.OpCode.delete);
@@ -81,6 +96,10 @@ public class OpResult {
         }
     }
 
+    /**
+     * A result from a setData operation.  This kind of result provides access
+     * to the Stat structure from the update.
+     */
     public static class SetDataResult extends OpResult {
         private Stat stat;
 
@@ -108,6 +127,10 @@ public class OpResult {
         }
     }
 
+    /**
+     * A result from a version check operation.  This kind of result provides
+     * access to the Stat structure for the znode that was checked.
+     */
     public static class CheckResult extends OpResult {
         private Stat stat;
 
@@ -135,6 +158,12 @@ public class OpResult {
         }
     }
 
+    /**
+     * An error result from any kind of operation.  The point of error results
+     * is that they contain an error code which helps understand what happened.
+     * @see KeeperException.Code
+     *
+     */
     public static class ErrorResult extends OpResult {
         private int err;
 

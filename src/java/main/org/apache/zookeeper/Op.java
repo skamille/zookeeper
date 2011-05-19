@@ -32,7 +32,13 @@ import java.util.List;
  * Represents a single operation in a multi-operation transaction.  Each operation can be a create, update
  * or delete or can just be a version check.
  *
- * Sub-classes of Op each represent each detailed type.
+ * Sub-classes of Op each represent each detailed type but should not normally be referenced except via
+ * the provided factory methods.
+ *
+ * @see ZooKeeper#create(String, byte[], java.util.List, CreateMode)
+ * @see ZooKeeper#create(String, byte[], java.util.List, CreateMode, org.apache.zookeeper.AsyncCallback.StringCallback, Object)
+ * @see ZooKeeper#delete(String, int)
+ * @see ZooKeeper#setData(String, byte[], int)
  */
 public abstract class Op {
     private int type;
@@ -42,32 +48,107 @@ public abstract class Op {
         this.type = type;
     }
 
+    /**
+     * Constructs a create operation.  Arguments are as for the ZooKeeper method of the same name.
+     * @see ZooKeeper#create(String, byte[], java.util.List, CreateMode)
+     * @see CreateMode#fromFlag(int)
+     *
+     * @param path
+     *                the path for the node
+     * @param data
+     *                the initial data for the node
+     * @param acl
+     *                the acl for the node
+     * @param flags
+     *                specifying whether the node to be created is ephemeral
+     *                and/or sequential but using the integer encoding.
+     */
     public static Op create(String path, byte[] data, List<ACL> acl, int flags) {
         return new Create(path, data, acl, flags);
     }
 
+    /**
+     * Constructs a create operation.  Arguments are as for the ZooKeeper method of the same name.
+     * @see ZooKeeper#create(String, byte[], java.util.List, CreateMode)
+     *
+     * @param path
+     *                the path for the node
+     * @param data
+     *                the initial data for the node
+     * @param acl
+     *                the acl for the node
+     * @param createMode
+     *                specifying whether the node to be created is ephemeral
+     *                and/or sequential
+     */
     public static Op create(String path, byte[] data, List<ACL> acl, CreateMode createMode) {
         return new Create(path, data, acl, createMode);
     }
 
+    /**
+     * Constructs a delete operation.  Arguments are as for the ZooKeeper method of the same name.
+     * @see ZooKeeper#delete(String, int)
+     *
+     * @param path
+     *                the path of the node to be deleted.
+     * @param version
+     *                the expected node version.
+     */
     public static Op delete(String path, int version) {
         return new Delete(path, version);
     }
 
+    /**
+     * Constructs an update operation.  Arguments are as for the ZooKeeper method of the same name.
+     * @see ZooKeeper#setData(String, byte[], int)
+     *
+     * @param path
+     *                the path of the node
+     * @param data
+     *                the data to set
+     * @param version
+     *                the expected matching version
+     */
     public static Op setData(String path, byte[] data, int version) {
         return new SetData(path, data, version);
     }
 
+
+    /**
+     * Constructs an version check operation.  Arguments are as for the ZooKeeper.setData method except that
+     * no data is provided since no update is intended.  The purpose for this is to allow read-modify-write
+     * operations that apply to multiple znodes, but where some of the znodes are involved only in the read,
+     * not the write.  A similar effect could be achieved by writing the same data back, but that leads to
+     * way more version updates than are necessary and more writing in general.
+     *
+     * @param path
+     *                the path of the node
+     * @param version
+     *                the expected matching version
+     * @return
+     */
     public static Op check(String path, int version) {
         return new Check(path, version);
     }
 
+    /**
+     * Gets the integer type code for an Op.  This code should be as from ZooDefs.OpCode
+     * @see ZooDefs.OpCode
+     * @return  The type code.
+     */
     public int getType() {
         return type;
     }
 
+    /**
+     * Encodes an op for wire transmission.
+     * @return An appropriate Record structure.
+     */
     public abstract Record toRequestRecord() ;
 
+    //////////////////
+    // these internal classes are public, but should not generally be referenced.
+    //
     public static class Create extends Op {
         private String path;
         private byte[] data;
