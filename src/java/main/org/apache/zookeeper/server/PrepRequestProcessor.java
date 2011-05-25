@@ -458,7 +458,6 @@ public class PrepRequestProcessor extends Thread implements RequestProcessor {
 					if (ke != null) {
                         request.hdr.setType(OpCode.error);
                         request.txn = new ErrorTxn(Code.RUNTIMEINCONSISTENCY.intValue());
-                        LOG.error(">>>> Skipping op='" + request.toString() + "' due to prior failure");
 					} 
 					
 					/* Prep the request and convert to a Txn */
