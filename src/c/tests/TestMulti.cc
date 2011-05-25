@@ -671,13 +671,6 @@ public:
         rc = zoo_create(zk, "/multi0", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz);
         CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
 
-        rc = zoo_check(zk, "/multi0", 0, NULL);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-
-        rc = zoo_check(zk, "/multi0", 0, &s1);
-        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
-        CPPUNIT_ASSERT_EQUAL(s1.version, 0);
-
         // Conditionally create /multi0/a' only if '/multi0' at version 0
         int nops = 2;
         zoo_op_t ops[nops];

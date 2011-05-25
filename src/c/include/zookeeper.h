@@ -1113,30 +1113,6 @@ ZOOAPI int zoo_aset_acl(zhandle_t *zh, const char *path, int version,
         struct ACL_vector *acl, void_completion_t, const void *data);
 
 /**
- * \brief perform a version check with a node and optionally get its stat.
- * 
- * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
- * \param path the name of the node. Expressed as a file name with slashes 
- * \param version the expected version of the node. The function will fail if the
- *    actual version of the node does not match the expected version.
- * \param completion the routine to invoke when the request completes. The completion
- * will be triggered with one of the following codes passed in as the rc argument:
- * ZOK operation completed successfully
- * ZNONODE the parent node does not exist.
- * ZNODEEXISTS the node already exists
- * ZNOAUTH the client does not have permission.
- * ZNOCHILDRENFOREPHEMERALS cannot create children of ephemeral nodes.
- * \param data The data that will be passed to the completion routine when the 
- * function completes.
- * \return ZOK on success or one of the following errcodes on failure:
- * ZBADARGUMENTS - invalid input parameters
- * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
- * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
- */
-ZOOAPI int zoo_acheck(zhandle_t *zh, const char *path, int version,
-        stat_completion_t completion, const void *data);
-
-/**
  * \brief atomically commits multiple zookeeper operations.
  *
  * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
@@ -1584,27 +1560,6 @@ ZOOAPI int zoo_get_acl(zhandle_t *zh, const char *path, struct ACL_vector *acl,
  */
 ZOOAPI int zoo_set_acl(zhandle_t *zh, const char *path, int version,
                            const struct ACL_vector *acl);
-
-/**
- * \brief perform a version check with a node and optionally get its stat.
- * 
- * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
- * \param path the name of the node. Expressed as a file name with slashes 
- * \param version the expected version of the node. The function will fail if the
- *    actual version of the node does not match the expected version.
- * \param stat a pointer to the stat information for the node involved in
- *   this function. If a non zero error code is returned, the content of
- *   stat is undefined. The programmer is NOT responsible for freeing stat.
- *   If NULL is passed in then nothing will be copied out to _stat.
- * \return the return code for the function call.
- * ZOK operation completed successfully
- * ZNONODE the parent node does not exist.
- * ZNOAUTH the client does not have permission.
- * ZBADARGUMENTS - invalid input parameters
- * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
- * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
- */
-ZOOAPI int zoo_check(zhandle_t *zh, const char *path, int version, struct Stat *stat);
 
 /**
  * \brief atomically commits multiple zookeeper operations synchronously.
