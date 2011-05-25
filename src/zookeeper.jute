@@ -259,7 +259,7 @@ module org.apache.zookeeper.txn {
         int err;
     }
     class Txn {
-        TxnHeader hdr;
+        int type;
         buffer data;
     }
     class MultiTxn {

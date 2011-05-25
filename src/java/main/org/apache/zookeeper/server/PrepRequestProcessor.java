@@ -487,7 +487,7 @@ public class PrepRequestProcessor extends Thread implements RequestProcessor {
                     request.txn.serialize(boa, "request") ;
                     ByteBuffer bb = ByteBuffer.wrap(baos.toByteArray());
 
-                    txns.add(new Txn(request.hdr, bb.array()));
+                    txns.add(new Txn(request.hdr.getType(), bb.array()));
                     index++;
                 }
 
