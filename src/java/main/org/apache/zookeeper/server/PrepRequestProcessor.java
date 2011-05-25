@@ -451,33 +451,33 @@ public class PrepRequestProcessor extends Thread implements RequestProcessor {
                 for(Op op: multiRequest) {
                     Record subrequest = op.toRequestRecord() ;
 
-					/* If we've already failed one of the ops, don't bother
-					 * trying the rest as we know it's going to fail and it
-					 * would be confusing in the logfiles.
-					 */
-					if (ke != null) {
+                    /* If we've already failed one of the ops, don't bother
+                     * trying the rest as we know it's going to fail and it
+                     * would be confusing in the logfiles.
+                     */
+                    if (ke != null) {
                         request.hdr.setType(OpCode.error);
                         request.txn = new ErrorTxn(Code.RUNTIMEINCONSISTENCY.intValue());
-					} 
-					
-					/* Prep the request and convert to a Txn */
-					else {
-						try {
-							pRequest2Txn(op.getType(), zxid, request, subrequest);
-						} catch (KeeperException e) {
-							if (ke == null) {
-								ke = e;
-							}
-							request.hdr.setType(OpCode.error);
-							request.txn = new ErrorTxn(e.code().intValue());
-							LOG.error(">>>> Got user-level KeeperException when processing "
-									+ request.toString()
-									+ " Error Path:" + e.getPath()
-									+ " Error:" + e.getMessage());
-							LOG.error(">>>> ABORTING remaing MultiOp ops");
-							request.setException(e);
-						}
-					}
+                    } 
+                    
+                    /* Prep the request and convert to a Txn */
+                    else {
+                        try {
+                            pRequest2Txn(op.getType(), zxid, request, subrequest);
+                        } catch (KeeperException e) {
+                            if (ke == null) {
+                                ke = e;
+                            }
+                            request.hdr.setType(OpCode.error);
+                            request.txn = new ErrorTxn(e.code().intValue());
+                            LOG.error(">>>> Got user-level KeeperException when processing "
+                                    + request.toString()
+                                    + " Error Path:" + e.getPath()
+                                    + " Error:" + e.getMessage());
+                            LOG.error(">>>> ABORTING remaing MultiOp ops");
+                            request.setException(e);
+                        }
+                    }
 
                     //FIXME: I don't want to have to serialize it here and then
                     //       immediately deserialize in next processor. But I'm 
