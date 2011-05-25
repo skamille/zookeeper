@@ -377,13 +377,13 @@ public:
         char p3[sz];
         p1[0] = p2[0] = p3[0] = '\0';
 
-        zoo_op_t ops[] = {
-            op_create("/multi1", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz),
-            op_create("/multi1/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p2, sz),
-            op_create("/multi1/b", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p3, sz)
-        };
-        int nops = sizeof(ops) / sizeof(ops[0]);
+        int nops = 3 ;
+        zoo_op_t ops[nops];
         zoo_op_result_t results[nops];
+
+        zoo_create_op_init(&ops[0], "/multi1", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz);
+        zoo_create_op_init(&ops[1], "/multi1/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p2, sz);
+        zoo_create_op_init(&ops[2], "/multi1/b", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p3, sz);
         
         rc = zoo_multi(zk, nops, ops, results);
         CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
@@ -407,13 +407,12 @@ public:
         int sz = 512;
         char p1[sz];
         p1[0] = '\0';
-       
-        zoo_op_t ops[] = {
-            op_create("/multi2", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz),
-            op_delete("/multi2", 0)
-        };
-        int nops = sizeof(ops) / sizeof(ops[0]);
+        int nops = 2 ;
+        zoo_op_t ops[nops];
         zoo_op_result_t results[nops];
+
+        zoo_create_op_init(&ops[0], "/multi2", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz);
+        zoo_delete_op_init(&ops[1], "/multi2", 0);
         
         rc = zoo_multi(zk, nops, ops, results);
         CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
@@ -430,15 +429,14 @@ public:
         int rc;
         watchctx_t ctx;
         zhandle_t *zk = createClient(&ctx);
-       
-        zoo_op_t ops[] = {
-            op_create("/multi3", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0),
-            op_delete("/multi3", 1),
-			op_create("/multi3", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0),
-			op_create("/multi3/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0)
-        };
-        int nops = sizeof(ops) / sizeof(ops[0]);
+        int nops = 4;
+        zoo_op_t ops[nops];
         zoo_op_result_t results[nops];
+
+        zoo_create_op_init(&ops[0], "/multi3", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0);
+        zoo_delete_op_init(&ops[1], "/multi3", 1);
+        zoo_create_op_init(&ops[2], "/multi3", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0);
+        zoo_create_op_init(&ops[3], "/multi3/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0);
         
         rc = zoo_multi(zk, nops, ops, results);
         CPPUNIT_ASSERT_EQUAL((int)ZBADVERSION, rc);
@@ -458,20 +456,19 @@ public:
         int sz = 512;
         char p1[sz];
         p1[0] = '\0';
-
-        zoo_op_t ops[] = {
-            /* Create */
-            op_create("/multi4", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz),
-            op_create("/multi4/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz),
-            op_create("/multi4/a/1", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz),
-            
-            /* Delete */
-            op_delete("/multi4/a/1", 0),
-            op_delete("/multi4/a", 0),
-            op_delete("/multi4", 0)
-        };
-        int nops = sizeof(ops) / sizeof(ops[0]);
+        int nops = 6;
+        zoo_op_t ops[nops];
         zoo_op_result_t results[nops];
+
+        /* Create */
+        zoo_create_op_init(&ops[0], "/multi4", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz);
+        zoo_create_op_init(&ops[1], "/multi4/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz);
+        zoo_create_op_init(&ops[2], "/multi4/a/1", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz);
+
+        /* Delete */
+        zoo_delete_op_init(&ops[3], "/multi4/a/1", 0);
+        zoo_delete_op_init(&ops[4], "/multi4/a", 0);
+        zoo_delete_op_init(&ops[5], "/multi4", 0);
         
         rc = zoo_multi(zk, nops, ops, results);
         CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
@@ -501,28 +498,26 @@ public:
         int blen = sz ;
 
         char p1[sz], p2[sz];
-
-        zoo_op_t ops[] = {
-            op_create("/multi5",   "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz),
-            op_create("/multi5/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p2, sz)
-        };
-        int nops = sizeof(ops) / sizeof(ops[0]) ;
+        
+        int nops = 2;
+        zoo_op_t ops[nops];
         zoo_op_result_t results[nops];
+
+        zoo_create_op_init(&ops[0], "/multi5",   "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz);
+        zoo_create_op_init(&ops[1], "/multi5/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p2, sz);
        
         rc = zoo_multi(zk, nops, ops, results);
         CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
         
         yield(zk, 5);
 
-        zoo_op_t setdata_ops[] = {
-            op_setdata("/multi5",   "1", 1, 0, &s1),
-            op_setdata("/multi5/a", "2", 1, 0, &s1)
-        };
+        zoo_op_t setdata_ops[nops];
+        zoo_op_result_t setdata_results[nops];
 
-        int nsops = sizeof(setdata_ops) / sizeof(setdata_ops[0]);;
-        zoo_op_result_t setdata_results[nsops];
+        zoo_set_op_init(&setdata_ops[0], "/multi5",   "1", 1, 0, &s1);
+        zoo_set_op_init(&setdata_ops[1], "/multi5/a", "2", 1, 0, &s1);
 
-        rc = zoo_multi(zk, nsops, setdata_ops, setdata_results);
+        rc = zoo_multi(zk, nops, setdata_ops, setdata_results);
         CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
         CPPUNIT_ASSERT_EQUAL((int)ZOK, results[0].err);
         CPPUNIT_ASSERT_EQUAL((int)ZOK, results[1].err);
@@ -553,20 +548,19 @@ public:
         char p1[sz];
         p1[0] = '\0';
         struct Stat s1;
-
-        zoo_op_t ops[] = {
-            op_create("/multi6", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz),
-            op_setdata("/multi6", "X", 1, 0, &s1),
-            op_setdata("/multi6", "Y", 1, 0, &s1)
-        };
-        int nops = sizeof(ops) / sizeof(ops[0]);
+        int nops = 3;
+        zoo_op_t ops[nops];
         zoo_op_result_t results[nops];
+
+        zoo_create_op_init(&ops[0], "/multi6", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz);
+        zoo_set_op_init(&ops[1], "/multi6", "X", 1, 0, &s1);
+        zoo_set_op_init(&ops[2], "/multi6", "Y", 1, 0, &s1);
         
         rc = zoo_multi(zk, nops, ops, results);
         CPPUNIT_ASSERT_EQUAL((int)ZBADVERSION, rc);
 
         //Updating version solves conflict -- order matters
-        ops[2].version = 1;
+        ops[2].set_op.version = 1;
         rc = zoo_multi(zk, nops, ops, results);
         CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
        
@@ -590,14 +584,13 @@ public:
         char p1[sz];
         p1[0] = '\0';
         struct Stat stat;
-
-        zoo_op_t ops[] = {
-            op_create("/multi7", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz),
-            op_delete("/multi7", 0),
-            op_setdata("/multi7", "Y", 1, 0, &stat)
-        };
-        int nops = sizeof(ops) / sizeof(ops[0]);
+        int nops = 3;
+        zoo_op_t ops[nops];
         zoo_op_result_t results[nops];
+
+        zoo_create_op_init(&ops[0], "/multi7", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz);
+        zoo_delete_op_init(&ops[1], "/multi7", 0);
+        zoo_set_op_init(&ops[2], "/multi7", "Y", 1, 0, &stat);
         
         rc = zoo_multi(zk, nops, ops, results);
         CPPUNIT_ASSERT_EQUAL((int)ZNONODE, rc);
@@ -618,13 +611,13 @@ public:
         p2[0] = '\0';
         p3[0] = '\0';
 
-        zoo_op_t ops[3] = {
-            op_create("/multi8",   "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz),
-            op_create("/multi8/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p2, sz),
-            op_create("/multi8/b", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p3, sz)
-        };
-        int nops = sizeof(ops) / sizeof(ops[0]);
+        int nops = 3;
+        zoo_op_t ops[nops];
         zoo_op_result_t results[nops];
+
+        zoo_create_op_init(&ops[0], "/multi8",   "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz);
+        zoo_create_op_init(&ops[1], "/multi8/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p2, sz);
+        zoo_create_op_init(&ops[2], "/multi8/b", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p3, sz);
  
         rc = zoo_amulti(zk, nops, ops, results, multi_completion_fn, 0);
         waitForMultiCompletion(10);
@@ -651,14 +644,15 @@ public:
         p2[0] = '\0';
         p3[0] = '\0';
 
-        zoo_op_result_t results[3] ;
-        zoo_op_t ops[3] = {
-            op_create("/multi9",   "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz),
-            op_create("/multi9",   "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p2, sz),
-            op_create("/multi9/b", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p3, sz),
-        };
+        int nops = 3;
+        zoo_op_t ops[nops];
+        zoo_op_result_t results[nops];
+
+        zoo_create_op_init(&ops[0], "/multi9",   "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz);
+        zoo_create_op_init(&ops[1], "/multi9",   "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p2, sz);
+        zoo_create_op_init(&ops[2], "/multi9/b", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p3, sz);
         
-        rc = zoo_multi(zk, 3, ops, results);
+        rc = zoo_multi(zk, nops, ops, results);
         CPPUNIT_ASSERT_EQUAL((int)ZNODEEXISTS, rc);
     }
     
@@ -685,12 +679,12 @@ public:
         CPPUNIT_ASSERT_EQUAL(s1.version, 0);
 
         // Conditionally create /multi0/a' only if '/multi0' at version 0
-        zoo_op_t ops[] = {
-            op_check("/multi0", 0, 0),
-            op_create("/multi0/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz)
-        };
-        int nops = sizeof(ops) / sizeof(ops[0]);
+        int nops = 2;
+        zoo_op_t ops[nops];
         zoo_op_result_t results[nops];
+
+        zoo_check_op_init(&ops[0], "/multi0", 0, 0);
+        zoo_create_op_init(&ops[1], "/multi0/a", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz);
         
         rc = zoo_multi(zk, nops, ops, results);
         CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
@@ -703,10 +697,9 @@ public:
         CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
  
         // Only create '/multi0/b' if '/multi0' at version 10 (which it's not)
-        zoo_op_t ops2[] = {
-            op_check("/multi0", 10, 0),
-            op_create("/multi0/b", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz)
-        };
+        zoo_op_t ops2[nops];
+        zoo_check_op_init(&ops2[0], "/multi0", 10, 0);
+        zoo_create_op_init(&ops2[1], "/multi0/b", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, p1, sz);
         
         rc = zoo_multi(zk, nops, ops2, results);
         CPPUNIT_ASSERT_EQUAL((int)ZBADVERSION, rc);

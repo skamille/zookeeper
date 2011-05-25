@@ -3028,53 +3028,59 @@ int zoo_amulti(zhandle_t *zh, int count, const zoo_op_t *ops,
             case ZOO_CREATE_OP: {
                 struct CreateRequest req;
 
-                rc = rc < 0 ? rc : CreateRequest_init(zh, &req, op->path, op->data, op->datalen, op->acl, op->flags);
+                rc = rc < 0 ? rc : CreateRequest_init(zh, &req, 
+                                        op->create_op.path, op->create_op.data, 
+                                        op->create_op.datalen, op->create_op.acl, 
+                                        op->create_op.flags);
                 rc = rc < 0 ? rc : serialize_CreateRequest(oa, "req", &req);
-                result->value = op->buf;
-				result->valuelen = op->buflen;
+                result->value = op->create_op.buf;
+				result->valuelen = op->create_op.buflen;
 
                 enter_critical(zh);
                 entry = create_completion_entry(h.xid, COMPLETION_STRING, op_result_string_completion, result, 0, 0); 
                 leave_critical(zh);
-                free_duplicate_path(req.path, op->path);
+                free_duplicate_path(req.path, op->create_op.path);
                 break;
             }
 
             case ZOO_DELETE_OP: {
                 struct DeleteRequest req;
-                rc = rc < 0 ? rc : DeleteRequest_init(zh, &req, op->path, op->version);
+                rc = rc < 0 ? rc : DeleteRequest_init(zh, &req, op->delete_op.path, op->delete_op.version);
                 rc = rc < 0 ? rc : serialize_DeleteRequest(oa, "req", &req);
 
                 enter_critical(zh);
                 entry = create_completion_entry(h.xid, COMPLETION_VOID, op_result_void_completion, result, 0, 0); 
                 leave_critical(zh);
-                free_duplicate_path(req.path, op->path);
+                free_duplicate_path(req.path, op->delete_op.path);
                 break;
             }
 
             case ZOO_SETDATA_OP: {
                 struct SetDataRequest req;
-                rc = rc < 0 ? rc : SetDataRequest_init(zh, &req, op->path, op->data, op->datalen, op->version);
+                rc = rc < 0 ? rc : SetDataRequest_init(zh, &req,
+                                        op->set_op.path, op->set_op.data, 
+                                        op->set_op.datalen, op->set_op.version);
                 rc = rc < 0 ? rc : serialize_SetDataRequest(oa, "req", &req);
-                result->stat = op->stat;
+                result->stat = op->set_op.stat;
 
                 enter_critical(zh);
                 entry = create_completion_entry(h.xid, COMPLETION_STAT, op_result_stat_completion, result, 0, 0); 
                 leave_critical(zh);
-                free_duplicate_path(req.path, op->path);
+                free_duplicate_path(req.path, op->set_op.path);
                 break;
             }
 
             case ZOO_CHECK_OP: {
                 struct CheckVersionRequest req;
-                rc = rc < 0 ? rc : CheckVersionRequest_init(zh, &req, op->path, op->version);
+                rc = rc < 0 ? rc : CheckVersionRequest_init(zh, &req,
+                                        op->check_op.path, op->check_op.version);
                 rc = rc < 0 ? rc : serialize_CheckVersionRequest(oa, "req", &req);
-                result->stat = op->stat;
+                result->stat = op->check_op.stat;
 
                 enter_critical(zh);
                 entry = create_completion_entry(h.xid, COMPLETION_STAT, op_result_stat_completion, result, 0, 0); 
                 leave_critical(zh);
-                free_duplicate_path(req.path, op->path);
+                free_duplicate_path(req.path, op->check_op.path);
                 break;
             } 
 
@@ -3131,6 +3137,50 @@ int zoo_check(zhandle_t *zh, const char *path, int version, struct Stat *stat)
     free_sync_completion(sc);
 
     return rc;
+}
+
+void zoo_create_op_init(zoo_op_t *op, const char *path, const char *value,
+        int valuelen,  const struct ACL_vector *acl, int flags, 
+        char *path_buffer, int path_buffer_len)
+{
+    assert(op);
+    op->type = ZOO_CREATE_OP;
+    op->create_op.path = path;
+    op->create_op.data = value;
+    op->create_op.datalen = valuelen;
+    op->create_op.acl = acl;
+    op->create_op.flags = flags;
+    op->create_op.buf = path_buffer;
+    op->create_op.buflen = path_buffer_len;
+}
+
+void zoo_delete_op_init(zoo_op_t *op, const char *path, int version)
+{
+    assert(op);
+    op->type = ZOO_DELETE_OP;
+    op->delete_op.path = path;
+    op->delete_op.version = version;
+}
+
+void zoo_set_op_init(zoo_op_t *op, const char *path, const char *buffer, 
+        int buflen, int version, struct Stat *stat)
+{
+    assert(op);
+    op->type = ZOO_SETDATA_OP;
+    op->set_op.path = path;
+    op->set_op.data = buffer;
+    op->set_op.datalen = buflen;
+    op->set_op.version = version;
+    op->set_op.stat = stat;
+}
+
+void zoo_check_op_init(zoo_op_t *op, const char *path, int version, struct Stat *stat)
+{
+    assert(op);
+    op->type = ZOO_CHECK_OP;
+    op->check_op.path = path;
+    op->check_op.version = version;
+    op->check_op.stat = stat;
 }
 
 int zoo_multi(zhandle_t *zh, int count, const zoo_op_t *ops, zoo_op_result_t *results)

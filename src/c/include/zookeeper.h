@@ -256,114 +256,131 @@ typedef struct {
 } clientid_t;
 
 /**
- * \brief op structure.
+ * \brief zoo_op structure.
  *
  * This structure holds all the arguments necessary for one op as part
  * of a containing multi_op via \ref zoo_multi or \ref zoo_amulti.
- * Note that it contains all the arguments necessary for any op regardless
- * of type. The structures should be initialized via the helper macros
- * \ref op_create, \ref op_delete and \ref op_setdata.
+ * This structure should be treated as opaque and initialized via 
+ * \ref zoo_create_op_init, \ref zoo_delete_op_init, \ref zoo_set_op_init
+ * and \ref zoo_check_op_init.
  */
 typedef struct zoo_op {
     int type;
-    const char *path;
-    const char *data;
-    int datalen;
+    union {
+        // CREATE
+        struct {
+            const char *path;
+            const char *data;
+            int datalen;
+	        char *buf;
+            int buflen;
+            const struct ACL_vector *acl;
+            int flags;
+        } create_op;
 
-    //CREATE
-	char *buf;
-    int buflen;
-    const struct ACL_vector *acl;
-    int flags;
-
-    //DELETE / SETDATA
-    int version;
-
-    //SETDATA
-    struct Stat *stat; 
+        // DELETE 
+        struct {
+            const char *path;
+            int version;
+        } delete_op;
+        
+        // SET
+        struct {
+            const char *path;
+            const char *data;
+            int datalen;
+            int version;
+            struct Stat *stat;
+        } set_op;
+        
+        // CHECK
+        struct {
+            const char *path;
+            int version;
+            struct Stat *stat;
+        } check_op;
+    };
 } zoo_op_t;
 
 /**
- * \brief op_create macro.
+ * \brief zoo_create_op_init.
  *
- * This macro is used to initialize an zoo_op_t with the arguments for 
- * a ZOO_CREATE_OP.
+ * This function initializes a zoo_op_t with the arguments for a ZOO_CREATE_OP.
  *
- * \param _path The name of the node. Expressed as a file name with slashes 
+ * \param op A pointer to the zoo_op_t to be initialized.
+ * \param path The name of the node. Expressed as a file name with slashes 
  * separating ancestors of the node.
- * \param _value The data to be stored in the node.
- * \param _valuelen The number of bytes in data. To set the data to be NULL use
+ * \param value The data to be stored in the node.
+ * \param valuelen The number of bytes in data. To set the data to be NULL use
  * value as NULL and valuelen as -1.
- * \param _acl The initial ACL of the node. The ACL must not be null or empty.
+ * \param acl The initial ACL of the node. The ACL must not be null or empty.
  * \param flags this parameter can be set to 0 for normal create or an OR
  *    of the Create Flags
- * \param _path_buffer Buffer which will be filled with the path of the
+ * \param path_buffer Buffer which will be filled with the path of the
  *    new node (this might be different than the supplied path
  *    because of the ZOO_SEQUENCE flag).  The path string will always be
  *    null-terminated. This parameter may be NULL if path_buffer_len = 0.
- * \param _path_buffer_len Size of path buffer; if the path of the new
+ * \param path_buffer_len Size of path buffer; if the path of the new
  *    node (including space for the null terminator) exceeds the buffer size,
  *    the path string will be truncated to fit.  The actual path of the
  *    new node in the server will not be affected by the truncation.
  *    The path string will always be null-terminated.
  */
-#define op_create(_path, _value, _valuelen, _acl, _flags, _path_buffer, _path_buffer_len) \
-    { ZOO_CREATE_OP, _path, _value, _valuelen, _path_buffer, _path_buffer_len, _acl, _flags, -1, NULL }
+void zoo_create_op_init(zoo_op_t *op, const char *path, const char *value,
+        int valuelen,  const struct ACL_vector *acl, int flags, 
+        char *path_buffer, int path_buffer_len);
 
 /**
- * \brief op_delete macro.
+ * \brief zoo_delete_op_init.
  *
- * This macro is used to initialize an zoo_op_t with the arguments for 
- * a ZOO_DELETE_OP.
+ * This function initializes a zoo_op_t with the arguments for a ZOO_DELETE_OP.
  *
- * \param _path the name of the node. Expressed as a file name with slashes 
+ * \param op A pointer to the zoo_op_t to be initialized.
+ * \param path the name of the node. Expressed as a file name with slashes 
  * separating ancestors of the node.
- * \param _version the expected version of the node. The function will fail if the
+ * \param version the expected version of the node. The function will fail if the
  *    actual version of the node does not match the expected version.
  *  If -1 is used the version check will not take place. 
  */
-#define op_delete(_path, _version) \
-    { ZOO_DELETE_OP, _path, NULL, 0, NULL, 0, NULL, 0, _version, NULL }
+void zoo_delete_op_init(zoo_op_t *op, const char *path, int version);
 
 /**
- * \brief op_setdata macro.
+ * \brief zoo_set_op_init.
  *
- * This macro is used to initialize an zoo_op_t with the arguments for 
- * a ZOO_SETDATA_OP.
+ * This function initializes an zoo_op_t with the arguments for a ZOO_SETDATA_OP.
  *
- * \param _path the name of the node. Expressed as a file name with slashes 
+ * \param op A pointer to the zoo_op_t to be initialized.
+ * \param path the name of the node. Expressed as a file name with slashes 
  * separating ancestors of the node.
- * \param _buffer the buffer holding data to be written to the node.
- * \param _buflen the number of bytes from buffer to write. To set NULL as data 
+ * \param buffer the buffer holding data to be written to the node.
+ * \param buflen the number of bytes from buffer to write. To set NULL as data 
  * use buffer as NULL and buflen as -1.
- * \param _version the expected version of the node. The function will fail if 
+ * \param version the expected version of the node. The function will fail if 
  * the actual version of the node does not match the expected version. If -1 is 
  * used the version check will not take place. 
- *
  */
-#define op_setdata(_path, _buffer, _buflen, _version, _stat) \
-    { ZOO_SETDATA_OP, _path, _buffer, _buflen, NULL, 0, NULL, 0, _version, _stat }
+void zoo_set_op_init(zoo_op_t *op, const char *path, const char *buffer, 
+        int buflen, int version, struct Stat *stat);
 
 /**
- * \brief op_check macro.
+ * \brief zoo_check_op_init.
  *
- * This macro is used to initialize an zoo_op_t with the arguments for 
- * a ZOO_CHECK_OP.
+ * This function initializes an zoo_op_t with the arguments for a ZOO_CHECK_OP.
  *
- * \param _path The name of the node. Expressed as a file name with slashes 
+ * \param op A pointer to the zoo_op_t to be initialized.
+ * \param path The name of the node. Expressed as a file name with slashes 
  * separating ancestors of the node.
- * \param _version the expected version of the node. The function will fail if the
- *    actual verison of the node does not match the expected version.
- * \param _stat a pointer to the stat information for the node involved in
+ * \param version the expected version of the node. The function will fail if the
+ *    actual version of the node does not match the expected version.
+ * \param stat a pointer to the stat information for the node involved in
  *   this function. If a non zero error code is returned, the content of
  *   stat is undefined. The programmer is NOT responsible for freeing stat.
  *   If NULL is passed in then nothing will be copied out to _stat.
  */
-#define op_check(_path, _version, _stat) \
-    { ZOO_CHECK_OP, _path, NULL, 0, NULL, 0, NULL, 0, _version, _stat }
+void zoo_check_op_init(zoo_op_t *op, const char *path, int version, struct Stat *stat);
 
 /**
- * \brief opresult structure.
+ * \brief zoo_op_result structure.
  *
  * This structure holds the result for an op submitted as part of a multi_op
  * via \ref zoo_multi or \ref zoo_amulti.
