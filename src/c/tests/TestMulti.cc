@@ -40,12 +40,6 @@ using namespace std;
 #include <recordio.h>
 #include "Util.h"
 
-struct buff_struct_2 {
-    int32_t len;
-    int32_t off;
-    char *buffer;
-};
-
 #ifdef THREADED
     static void yield(zhandle_t *zh, int i)
     {
@@ -182,6 +176,7 @@ class Zookeeper_multi : public CPPUNIT_NS::TestFixture
     CPPUNIT_TEST(testAsyncMulti);
     CPPUNIT_TEST(testMultiFail);
     CPPUNIT_TEST(testCheck);
+    CPPUNIT_TEST(testWatch);
 #endif
     CPPUNIT_TEST_SUITE_END();
 
@@ -201,27 +196,20 @@ class Zookeeper_multi : public CPPUNIT_NS::TestFixture
         }
     }
 
-    static const char hostPorts_multi[];
+    static const char hostPorts[];
 
     const char *getHostPorts() {
-        return hostPorts_multi;
+        return hostPorts;
     }
     
     zhandle_t *createClient(watchctx_t *ctx) {
-        return createClient(hostPorts_multi, ctx);
+        return createClient(hostPorts, ctx);
     }
 
     zhandle_t *createClient(const char *hp, watchctx_t *ctx) {
         zhandle_t *zk = zookeeper_init(hp, watcher, 10000, 0, ctx, 0);
         ctx->zh = zk;
-        sleep(1);
-        return zk;
-    }
-    
-    zhandle_t *createchClient(watchctx_t *ctx, const char* chroot) {
-        zhandle_t *zk = zookeeper_init(chroot, watcher, 10000, 0, ctx, 0);
-        ctx->zh = zk;
-        sleep(1);
+        CPPUNIT_ASSERT_EQUAL(true, ctx->waitForConnected(zk));
         return zk;
     }
         
@@ -245,64 +233,15 @@ public:
         zoo_set_log_stream(logfile);
     }
 
-
-    void startServer() {
-        char cmd[1024];
-        sprintf(cmd, "%s start %s", ZKSERVER_CMD, getHostPorts());
-        CPPUNIT_ASSERT(system(cmd) == 0);
-    }
-
-    void stopServer() {
-        char cmd[1024];
-        sprintf(cmd, "%s stop %s", ZKSERVER_CMD, getHostPorts());
-        CPPUNIT_ASSERT(system(cmd) == 0);
-    }
-
     void tearDown()
     {
     }
     
-    /** have a callback in the default watcher **/
-    static void default_zoo_watcher(zhandle_t *zzh, int type, int state, const char *path, void *context){
-        int zrc = 0;
-        struct String_vector str_vec = {0, NULL};
-        zrc = zoo_wget_children(zzh, "/mytest", default_zoo_watcher, NULL, &str_vec);
-    }
-  
-    bool waitForEvent(zhandle_t *zh, watchctx_t *ctx, int seconds) {
-        time_t expires = time(0) + seconds;
-        while(ctx->countEvents() == 0 && time(0) < expires) {
-            yield(zh, 1);
-        }
-        return ctx->countEvents() > 0;
-    }
-
-#define COUNT 100
-
     static volatile int count;
-    static const char* hp_chroot;
-
-    static void statCompletion(int rc, const struct Stat *stat, const void *data) {
-        int tmp = (int) (long) data;
-        CPPUNIT_ASSERT_EQUAL(tmp, rc);
-    }
-
-    static void create_completion_fn(int rc, const char* value, const void *data) {
-        CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
-        count++;
-    }
 
     static void multi_completion_fn(int rc, const void *data) {
         CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
         count++;
-    }
-
-    static void waitForCreateCompletion(int seconds) {
-        time_t expires = time(0) + seconds;
-        while(count == 0 && time(0) < expires) {
-            sleep(1);
-        }
-        count--;
     }
 
     static void waitForMultiCompletion(int seconds) {
@@ -311,56 +250,6 @@ public:
             sleep(1);
         }
         count--;
-    }
-
-    static void watcher_chroot_fn(zhandle_t *zh, int type,
-                                    int state, const char *path,void *watcherCtx) {
-        // check for path
-        char *client_path = (char *) watcherCtx;
-        CPPUNIT_ASSERT(strcmp(client_path, path) == 0);
-        count ++;
-    }
-
-    static void waitForChrootWatch(int seconds) {
-        time_t expires = time(0) + seconds;
-        while (count == 0 && time(0) < expires) {
-            sleep(1);
-        }
-        count--;
-    }
-
-    static void waitForVoidCompletion(int seconds) {
-        time_t expires = time(0) + seconds;
-        while(count == 0 && time(0) < expires) {
-            sleep(1);
-        }
-        count--;
-    }
-
-    static void voidCompletion(int rc, const void *data) {
-        int tmp = (int) (long) data;
-        CPPUNIT_ASSERT_EQUAL(tmp, rc);
-        count++;
-    }
-
-    static void verifyCreateFails(const char *path, zhandle_t *zk) {
-      CPPUNIT_ASSERT_EQUAL((int)ZBADARGUMENTS, zoo_create(zk,
-          path, "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, 0, 0));
-    }
-
-    static void verifyCreateOk(const char *path, zhandle_t *zk) {
-      CPPUNIT_ASSERT_EQUAL((int)ZOK, zoo_create(zk,
-          path, "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, 0, 0));
-    }
-
-    static void verifyCreateFailsSeq(const char *path, zhandle_t *zk) {
-      CPPUNIT_ASSERT_EQUAL((int)ZBADARGUMENTS, zoo_create(zk,
-          path, "", 0, &ZOO_OPEN_ACL_UNSAFE, ZOO_SEQUENCE, 0, 0));
-    }
-
-    static void verifyCreateOkSeq(const char *path, zhandle_t *zk) {
-      CPPUNIT_ASSERT_EQUAL((int)ZOK, zoo_create(zk,
-          path, "", 0, &ZOO_OPEN_ACL_UNSAFE, ZOO_SEQUENCE, 0, 0));
     }
 
     /**
@@ -705,8 +594,60 @@ public:
         CPPUNIT_ASSERT_EQUAL((int)ZNONODE, rc);
     }
 
+    /**
+     * Do a multi op inside a watch callback context.
+     */
+    static void doMultiInWatch(zhandle_t *zk, int type, int state, const char *path, void *ctx) {
+        int rc;
+        int sz = 512;
+        char p1[sz];
+        p1[0] = '\0';
+        struct Stat s1;
+
+        int nops = 1;
+        zoo_op_t ops[nops];
+        zoo_op_result_t results[nops];
+
+        zoo_set_op_init(&ops[0], "/multiwatch", "1", 1, -1, NULL);
+
+        rc = zoo_multi(zk, nops, ops, results);
+        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
+        CPPUNIT_ASSERT_EQUAL((int)ZOK, results[0].err);
+
+        memset(p1, '\0', sz);
+        rc = zoo_get(zk, "/multiwatch", 0, p1, &sz, &s1);
+        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
+        CPPUNIT_ASSERT_EQUAL(1, sz);
+        CPPUNIT_ASSERT(strcmp("1", p1) == 0);
+        count++;
+    }
+
+    /**
+     * Test multi-op called from a watch
+     */
+     void testWatch() {
+        int rc;
+        watchctx_t ctx;
+        zhandle_t *zk = createClient(&ctx);
+        int sz = 512;
+        char p1[sz];
+        p1[0] = '\0';
+
+        rc = zoo_create(zk, "/multiwatch", "", 0, &ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0);
+        CPPUNIT_ASSERT_EQUAL((int)ZOK, rc);
+
+        // create a watch on node '/multiwatch'
+        rc = zoo_wget(zk, "/multiwatch", doMultiInWatch, &ctx, p1, &sz, NULL);
+
+        // setdata on node '/multiwatch' this should trip the watch
+        rc = zoo_set(zk, "/multiwatch", NULL, -1, -1);
+        CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
+
+        // wait for multi completion in doMultiInWatch
+        waitForMultiCompletion(5);
+     }
 };
 
 volatile int Zookeeper_multi::count;
-const char Zookeeper_multi::hostPorts_multi[] = "127.0.0.1:22181";
+const char Zookeeper_multi::hostPorts[] = "127.0.0.1:22181";
 CPPUNIT_TEST_SUITE_REGISTRATION(Zookeeper_multi);

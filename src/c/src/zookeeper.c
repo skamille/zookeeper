@@ -159,6 +159,7 @@ typedef struct completion {
         string_completion_t string_result;
         struct watcher_object_list *watcher_result;
     };
+    completion_head_t clist; /* For multi-op */
 } completion_t;
 
 typedef struct _completion_list {
@@ -168,13 +169,16 @@ typedef struct _completion_list {
     buffer_list_t *buffer;
     struct _completion_list *next;
     watcher_registration_t* watcher;
-    completion_head_t clist; /* For multi-op */
 } completion_list_t;
 
 const char*err2string(int err);
 static int queue_session_event(zhandle_t *zh, int state);
 static const char* format_endpoint_info(const struct sockaddr_storage* ep);
 static const char* format_current_endpoint_info(zhandle_t* zh);
+
+/* deserialize forward declarations */
+static void deserialize_response(int type, int xid, int failed, int rc, completion_list_t *cptr, struct iarchive *ia);
+static int deserialize_multi(int xid, completion_list_t *cptr, struct iarchive *ia);
 
 /* completion routine forward declarations */
 static int add_completion(zhandle_t *zh, int xid, int completion_type,
@@ -1847,13 +1851,43 @@ static void process_sync_completion(
         break;
     case COMPLETION_VOID:
         break;
+    case COMPLETION_MULTI:
+        sc->rc = deserialize_multi(cptr->xid, cptr, ia);
+        break;
     default:
-        LOG_DEBUG(("UNKNOWN completion type"));
+        LOG_DEBUG(("Unsupported completion type=%d", cptr->c.type));
         break;
     }
 }
 
-void deserialize_response(int type, int xid, int failed, int rc, completion_list_t *cptr, struct iarchive *ia)
+static int deserialize_multi(int xid, completion_list_t *cptr, struct iarchive *ia)
+{
+    int rc = 0;
+    completion_head_t *clist = &cptr->c.clist;
+    assert(clist);
+    struct MultiHeader mhdr = { 0 };
+    deserialize_MultiHeader(ia, "multiheader", &mhdr);
+    while (!mhdr.done) {
+        completion_list_t *entry = dequeue_completion(clist);
+        assert(entry);
+
+        if (mhdr.type == -1) {
+            struct ErrorResponse er;
+            deserialize_ErrorResponse(ia, "error", &er);
+            mhdr.err = er.err ;
+            if (rc == 0 && er.err != 0 && er.err != ZRUNTIMEINCONSISTENCY) {
+                rc = er.err;
+            }
+        }
+
+        deserialize_response(entry->c.type, xid, mhdr.type == -1, mhdr.err, entry, ia);
+        deserialize_MultiHeader(ia, "multiheader", &mhdr);
+    }
+
+    return rc;
+}
+
+static void deserialize_response(int type, int xid, int failed, int rc, completion_list_t *cptr, struct iarchive *ia)
 {
     switch (type) {
     case COMPLETION_DATA:
@@ -1939,7 +1973,14 @@ void deserialize_response(int type, int xid, int failed, int rc, completion_list
             cptr->c.void_result(rc, cptr->data);
         }
         break;
-   default:
+    case COMPLETION_MULTI:
+        LOG_DEBUG(("Calling COMPLETION_MULTI for xid=%#x failed=%d rc=%d",
+                    cptr->xid, failed, rc));
+        rc = deserialize_multi(xid, cptr, ia);
+        assert(cptr->c.void_result);
+        cptr->c.void_result(rc, cptr->data);
+        break;
+    default:
         LOG_DEBUG(("Unsupported completion type=%d", cptr->c.type));
     }
 }
@@ -1970,58 +2011,7 @@ void process_completions(zhandle_t *zh)
             deliverWatchers(zh,type,state,evt.path, &cptr->c.watcher_result);
             deallocate_WatcherEvent(&evt);
         } else {
-            if (cptr->c.type == COMPLETION_MULTI) {
-                int multi_err = 0;
-                completion_head_t *clist = &cptr->clist;
-                assert(clist);
-                struct MultiHeader mhdr = { 0 };
-                deserialize_MultiHeader(ia, "multiheader", &mhdr);
-                while (!mhdr.done) {
-                    completion_list_t *entry = dequeue_completion(clist);
-                    assert(entry);
-
-                    if (mhdr.type == -1) {
-                        struct ErrorResponse er;
-                        deserialize_ErrorResponse(ia, "error", &er);
-						mhdr.err = er.err ;
-
-                        /* Server sets a value of '0' in error's err field if
-                         * that op didn't fail, and ZRUNTIMEINCONSISTENCY for
-                         * any op that happened after the failing op. The first
-                         * non-zero error is the op that caused the multi op
-                         * to fail. This should always match the overall return
-                         * value from the multi-op.
-                         */
-                        if (multi_err == 0 && er.err != 0 && er.err != ZRUNTIMEINCONSISTENCY) {
-                            multi_err = er.err;
-                        }
-                    }
-
-					deserialize_response(entry->c.type, hdr.xid, mhdr.type == -1, mhdr.err, entry, ia);
-
-                    deserialize_MultiHeader(ia, "multiheader", &mhdr);
-                }
-
-                /* Now invoke the tail completion now that we're finished with sub-ops in multi */
-                completion_list_t *tail = dequeue_completion(clist);
-                
-                if (tail->c.void_result == SYNCHRONOUS_MARKER) {
-                    struct sync_completion *sc = (struct sync_completion*)tail->data;
-                    sc->rc = multi_err;
-                
-                    process_sync_completion(tail, sc, ia); 
-                    notify_sync_completion(sc);
-                } else {
-                    LOG_DEBUG(("Queueing asynchronous response"));
-
-                    tail->buffer = bptr;
-                    queue_completion(&zh->completions_to_process, tail, 0);
-                    close_buffer_iarchive(&ia);
-                    return;
-                }
-            } else {
-                deserialize_response(cptr->c.type, hdr.xid, hdr.err != 0, hdr.err, cptr, ia);
-            }
+            deserialize_response(cptr->c.type, hdr.xid, hdr.err != 0, hdr.err, cptr, ia);
         }
         destroy_completion_entry(cptr);
         close_buffer_iarchive(&ia);
@@ -2251,16 +2241,15 @@ static completion_list_t* create_completion_entry(int xid, int completion_type,
     case COMPLETION_ACLLIST:
         c->c.acl_result = (acl_completion_t)dc;
         break;
+    case COMPLETION_MULTI:
+        assert(clist);
+        c->c.void_result = (void_completion_t)dc;
+        c->c.clist = *clist;
+        break;
     }
     c->xid = xid;
     c->watcher = wo;
     
-    if (clist) {
-        c->clist = *clist;
-    } else {
-        memset(&c->clist, 0, sizeof(completion_head_t));
-    }
-
     return c;
 }
 
@@ -2954,15 +2943,6 @@ static void op_result_stat_completion(int err, const struct Stat *stat, const vo
     }
 }   
 
-static void op_result_multi_completion(int err, const void *data)
-{
-	/* Nothing to do as this is a placeholder only. It's only purpose is to hold the
-	 * list of completions for each op in the multi op. There's a "tail completion"
-	 * in that list that actually notifies the caller and updates the return
-	 * code.
-	 */
-}
-
 static int CheckVersionRequest_init(zhandle_t *zh, struct CheckVersionRequest *req,
         const char *path, int version)
 {
@@ -3062,16 +3042,12 @@ int zoo_amulti(zhandle_t *zh, int count, const zoo_op_t *ops,
         queue_completion(&clist, entry, 0);
     }
 
-    /* Queue up tail void completion to be called when all ops finish */
-    completion_list_t *entry = create_completion_entry(h.xid, COMPLETION_VOID, completion, data, 0, 0);
-    queue_completion(&clist, entry, 0);
-    
     struct MultiHeader mh = { .type=-1, .done=1, .err=-1 };
     rc = rc < 0 ? rc : serialize_MultiHeader(oa, "multiheader", &mh);
   
     /* BEGIN: CRTICIAL SECTION */
     enter_critical(zh);
-    rc = rc < 0 ? rc : add_multi_completion(zh, h.xid, op_result_multi_completion, NULL, &clist);
+    rc = rc < 0 ? rc : add_multi_completion(zh, h.xid, completion, data, &clist);
     rc = rc < 0 ? rc : queue_buffer_bytes(&zh->to_send, get_buffer(oa),
             get_buffer_len(oa));
     leave_critical(zh);
